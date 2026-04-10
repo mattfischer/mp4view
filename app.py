@@ -3,7 +3,11 @@ import sys
 from PySide2 import QtWidgets
 
 from hexdump import HexDumpView
-from treeview import TreeModel
+from syntax import SyntaxAnalyzerView, SyntaxItem
+
+class Analyzer():
+    def analyze(self):
+        return [SyntaxItem('Foo %i' % i) for i in range(100)]
 
 class App(QtWidgets.QApplication):
     def __init__(self, args):
@@ -12,21 +16,9 @@ class App(QtWidgets.QApplication):
         self.main_window = QtWidgets.QMainWindow()
         self.main_window.setMinimumSize(1024, 768)
 
-        layout = QtWidgets.QHBoxLayout()
-
-        self.tree_view = QtWidgets.QTreeView()
-        self.tree_model = TreeModel()
-        self.tree_view.setModel(self.tree_model)
-        self.tree_view.setHeaderHidden(True)
-        layout.addWidget(self.tree_view)
-
-        self.hex_dump_view = HexDumpView('app.py')
-        layout.addWidget(self.hex_dump_view)
-
-        central_widget = QtWidgets.QWidget()
-        central_widget.setLayout(layout)
-
-        self.main_window.setCentralWidget(central_widget)
+        analyzer = Analyzer()
+        self.analyzer_view = SyntaxAnalyzerView(analyzer)
+        self.main_window.setCentralWidget(self.analyzer_view)
         self.main_window.show()
 
 if __name__ == "__main__":

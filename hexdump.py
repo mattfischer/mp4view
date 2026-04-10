@@ -5,12 +5,10 @@ class HexDumpView(QtWidgets.QAbstractScrollArea):
     def __init__(self, filename):
         super(HexDumpView, self).__init__()
         self.font = QtGui.QFontDatabase.systemFont(QtGui.QFontDatabase.FixedFont)
-        self.font.setPixelSize(30)
-        self.font.setBold(True)
         metrics = QtGui.QFontMetrics(self.font)
         self.advance = metrics.horizontalAdvance('xx ')
         self.line_spacing = metrics.lineSpacing()
-        self.setMinimumWidth(16*self.advance)
+        self.setMinimumWidth(16*self.advance + 60)
 
         self.file = open(filename, 'rb')
         size = os.path.getsize(filename)

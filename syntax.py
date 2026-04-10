@@ -1,11 +1,14 @@
-from PySide2 import QtCore
+from PySide2 import QtCore, QtWidgets
 from PySide2.QtCore import Qt
 
-class TreeItem:
-    def __init__(self, name, children):
+from hexdump import HexDumpView
+
+class SyntaxItem:
+    def __init__(self, name, children=[], analyzer=None):
         self.name = name
         self.children = children
         self.parent = None
+        self.analyzer = analyzer
         for child in self.children:
             child.parent = self
 
@@ -14,16 +17,18 @@ class TreeItem:
             return self.parent.children.index(self)
         return 0
 
-class TreeModel(QtCore.QAbstractItemModel):
-    def __init__(self):
-        super(TreeModel, self).__init__()
-        sub_items = [TreeItem('Subitem 1', []), TreeItem('Subitem 2', [])]
-        self.items = [TreeItem('Item 1', sub_items), TreeItem('Item 2', [])]
+class SyntaxAnalyzerModel(QtCore.QAbstractItemModel):
+    def __init__(self, analyzer):
+        super(SyntaxAnalyzerModel, self).__init__()
+        self.items = analyzer.analyze()
 
     def rowCount(self, parent=QtCore.QModelIndex()):
         if parent.isValid():
             item = parent.internalPointer()
-            return len(item.children)
+            if self.canFetchMore(parent):
+                return 1
+            else:
+                return len(item.children)
         else:
             return len(self.items)
 
@@ -55,4 +60,32 @@ class TreeModel(QtCore.QAbstractItemModel):
             item = index.internalPointer()
             return item.name
         return None
+
+    def canFetchMore(self, parent):
+        item = parent.internalPointer()
+        return (item is not None) and (item.analyzer is not None)
+
+    def fetchMore(self, parent):
+        item = parent.internalPointer()
+        item.children = item.analyzer.analyze()
+        for child in item.children:
+            child.parent = item
+        item.analyzer = None
+
+class SyntaxAnalyzerView(QtWidgets.QWidget):
+    def __init__(self, analyzer, parent=None):
+        super(SyntaxAnalyzerView, self).__init__(parent)
+        self.model = SyntaxAnalyzerModel(analyzer)
+
+        layout = QtWidgets.QHBoxLayout()
+
+        self.tree_view = QtWidgets.QTreeView()
+        self.tree_view.setModel(self.model)
+        self.tree_view.setHeaderHidden(True)
+        layout.addWidget(self.tree_view, 1)
+
+        self.hex_dump_view = HexDumpView('app.py')
+        layout.addWidget(self.hex_dump_view)
+
+        self.setLayout(layout)
 
