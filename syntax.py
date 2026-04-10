@@ -82,10 +82,14 @@ class SyntaxAnalyzerView(QtWidgets.QWidget):
         self.tree_view = QtWidgets.QTreeView()
         self.tree_view.setModel(self.model)
         self.tree_view.setHeaderHidden(True)
+        self.tree_view.clicked.connect(self.on_item_clicked)
         layout.addWidget(self.tree_view, 1)
 
         self.hex_dump_view = HexDumpView('app.py')
         layout.addWidget(self.hex_dump_view)
 
         self.setLayout(layout)
+    
+    def on_item_clicked(self, index):
+        self.hex_dump_view.setHighlight(index.row() * 10, index.row() * 10 + 10)
 
