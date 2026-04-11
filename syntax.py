@@ -4,8 +4,10 @@ from PySide2.QtCore import Qt
 from hexdump import HexDumpView
 
 class SyntaxItem:
-    def __init__(self, name, children=[], analyzer=None):
+    def __init__(self, name, start, size, children=[], analyzer=None):
         self.name = name
+        self.start = start
+        self.size = size
         self.children = children
         self.parent = None
         self.analyzer = analyzer
@@ -85,11 +87,12 @@ class SyntaxAnalyzerView(QtWidgets.QWidget):
         self.tree_view.clicked.connect(self.on_item_clicked)
         layout.addWidget(self.tree_view, 1)
 
-        self.hex_dump_view = HexDumpView('app.py')
+        self.hex_dump_view = HexDumpView(analyzer.stream)
         layout.addWidget(self.hex_dump_view)
 
         self.setLayout(layout)
     
     def on_item_clicked(self, index):
-        self.hex_dump_view.setHighlight(index.row() * 10, index.row() * 10 + 10)
-
+        item = index.internalPointer()
+        self.hex_dump_view.set_highlight(item.start, item.start + item.size)
+        self.hex_dump_view.ensure_visible(item.start)
