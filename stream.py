@@ -4,11 +4,31 @@ import io
 from syntax import SyntaxItem
 
 class Bitstream:
-    def __init__(self, bytes):
+    def __init__(self, bytes, byte_start):
         self.bytes = bytes
         self.pos = 0
 
-    def getbits(self, bits):
+        self.syntax_item_stack = []
+        self.byte_start = byte_start
+
+    def start_syntax_item(self, name):
+        start = int(self.pos / 8)
+        self.syntax_item_stack.append((name, start, []))
+
+    def finish_syntax_item(self, extra_children=[]):
+        (name, start, children) = self.syntax_item_stack.pop()
+        end = int(self.pos / 8)
+        size = max(end - start, 1)
+        item = SyntaxItem(name, start + self.byte_start, size, children + extra_children)
+        self.append_syntax_item(item)
+        return item
+
+    def append_syntax_item(self, item):
+        if len(self.syntax_item_stack) > 0:
+            (_, _, children) = self.syntax_item_stack[-1]
+            children.append(item)
+
+    def getbits(self, bits, name=None):
         start = int(self.pos / 8)
         end = int((self.pos + bits - 1) / 8)
         mod = (self.pos + bits - 1) % 8
@@ -25,12 +45,21 @@ class Bitstream:
         val &= mask
 
         self.pos += bits
+
+        size = max(end - start, 1)
+        if name:
+            self.append_syntax_item(SyntaxItem('%s: %i' % (name, val), start + self.byte_start, size))
+        
         return val
 
-    def getstring(self, length):
+    def getstring(self, length, name=None):
         start = int(self.pos / 8)
         string = self.bytes[start:start+length].decode('utf-8')
         self.pos += length * 8
+
+        if name:
+            self.append_syntax_item(SyntaxItem('%s: \'%s\'' % (name, string), start + self.byte_start, length))
+            
         return string
 
 class Bytestream:

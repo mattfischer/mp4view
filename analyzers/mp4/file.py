@@ -433,9 +433,11 @@ class SoundMediaHeaderBox(FullBox):
 class ESDBox(FullBox):
     def __init__(self, bytestream, start):
         super().__init__(bytestream, start)
+        descriptor_start = self.bytestream.pos
         bytes = self.bytestream.read(self.start + self.size - self.bytestream.pos)
-        self.descriptor = ESDescriptor(bytes)
-
+        self.descriptor = ESDescriptor(bytes, descriptor_start)
+        self.bytestream.append_syntax_item(self.descriptor.syntax_item)
+        
     def box_name():
         return 'ESDBox'
 
