@@ -83,8 +83,10 @@ class Bytestream:
         self.pos += length
         return bytes
 
-    def start_syntax_item(self, name):
-        self.syntax_item_stack.append((name, self.pos, []))
+    def start_syntax_item(self, name, start=-1):
+        if start == -1:
+            start = self.pos
+        self.syntax_item_stack.append((name, start, []))
 
     def finish_syntax_item(self, extra_children=[]):
         (name, start, children) = self.syntax_item_stack.pop()

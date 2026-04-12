@@ -13,10 +13,10 @@ class Box:
 
         self.bytestream.seek(start)
 
-        self.size = self.bytestream.getuint32('Size')
-        self.type = self.bytestream.getfixedstring(4, 'Type')
+        self.size = self.bytestream.getuint32('Box Size')
+        self.type = self.bytestream.getfixedstring(4, 'Box Type')
         if self.size == 1:
-            self.size = self.bytestream.getuint64('Size (extended)')
+            self.size = self.bytestream.getuint64('Box Size (extended)')
         elif self.size == 0:
             self.size = self.bytestream.size - start
 
@@ -481,10 +481,10 @@ def parsebox(bytestream):
     }
     cls = mapping.get(type)
     if cls:
-        bytestream.start_syntax_item(cls.box_name())
+        bytestream.start_syntax_item(cls.box_name(), start)
         box = cls(bytestream, start)
     else:
-        bytestream.start_syntax_item('Box (\'%s\')' % type)
+        bytestream.start_syntax_item('Box (\'%s\')' % type, start)
         box = Box(bytestream, start)
     bytestream.seek(start + box.size)
     box.syntax_item = bytestream.finish_syntax_item()
