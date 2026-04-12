@@ -484,6 +484,7 @@ def parsebox(bytestream):
     else:
         bytestream.start_syntax_item('Box (\'%s\')' % type)
         box = Box(bytestream, start)
+    bytestream.seek(start + box.size)
     box.syntax_item = bytestream.finish_syntax_item()
     return box
 

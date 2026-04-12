@@ -26,7 +26,7 @@ class HexDumpView(QtWidgets.QAbstractScrollArea):
 
         (highlight_start, highlight_end) = self.highlight
         if highlight_start != -1:
-            brush = QtGui.QBrush(QtGui.QColor(192, 192, 192))
+            brush = QtGui.QBrush(QtGui.QColor(192, 223, 255))
             highlight_start_line = highlight_start // 16
             highlight_start_char = highlight_start % 16
             highlight_end_line = highlight_end // 16
