@@ -5,88 +5,18 @@ import stream
 from syntax import SyntaxItem
 
 class Box:
-    def start_syntax_item(self, name):
-        self.syntax_item_stack.append((name, self.bytestream.pos, []))
-
-    def finish_syntax_item(self):
-        (name, start, children) = self.syntax_item_stack.pop()
-        size = 0
-        for child in children:
-            size += child.size
-        item = SyntaxItem(name, start, size, children)
-        self.append_syntax_item(item)
-
-    def append_syntax_item(self, item):
-        if len(self.syntax_item_stack) > 0:
-            (_, _, children) = self.syntax_item_stack[-1]
-            children.append(item)
-        else:
-            self.syntax_items.append(item)
-
-    def parse_uint8(self, name=None):
-        start = self.bytestream.pos
-        size = 1
-        value = self.bytestream.getuint8()
-        if name:
-            self.append_syntax_item(SyntaxItem('%s: %i' % (name, value), start, size))
-        return value
-
-    def parse_uint16(self, name=None):
-        start = self.bytestream.pos
-        size = 2
-        value = self.bytestream.getuint16()
-        if name:
-            self.append_syntax_item(SyntaxItem('%s: %i' % (name, value), start, size))
-        return value
-
-    def parse_uint32(self, name=None):
-        start = self.bytestream.pos
-        size = 4
-        value = self.bytestream.getuint32()
-        if name:
-            self.append_syntax_item(SyntaxItem('%s: %i' % (name, value), start, size))
-        return value
-
-    def parse_uint64(self, name=None):
-        start = self.bytestream.pos
-        size = 8
-        value = self.bytestream.getuint64()
-        if name:
-            self.append_syntax_item(SyntaxItem('%s: %i' % (name, value), start, size))
-        return value
-
-    def parse_fixedstring(self, length, name=None):
-        start = self.bytestream.pos
-        size = length
-        value = self.bytestream.getfixedstring(length)
-        if name:
-            display = value
-            if display[0] == '\0':
-                display = '<null>'
-            self.append_syntax_item(SyntaxItem('%s: \'%s\'' % (name, display), start, size))
-        return value
-
-    def parse_string(self, maxsize, name=None):
-        start = self.bytestream.pos
-        value = self.bytestream.getstring(maxsize)
-        size = self.bytestream.pos - start
-        if name:
-            self.append_syntax_item(SyntaxItem('%s: \'%s\'' % (name, value), start, size))
-        return value
-
-    def __init__(self, bytestream, start, name=''):
+    def __init__(self, bytestream, start):
         self.bytestream = bytestream
         self.start = start
-        self.box_name = name
         self.syntax_items = []
         self.syntax_item_stack = []
 
         self.bytestream.seek(start)
 
-        self.size = self.parse_uint32('Size')
-        self.type = self.parse_fixedstring(4, 'Type')
+        self.size = self.bytestream.getuint32('Size')
+        self.type = self.bytestream.getfixedstring(4, 'Type')
         if self.size == 1:
-            self.size = self.parse_uint64('Size (extended)')
+            self.size = self.bytestream.getuint64('Size (extended)')
         elif self.size == 0:
             self.size = self.bytestream.size - start
 
@@ -118,250 +48,290 @@ class Box:
     def findbox(self, cls):
         return self.findboxes(cls)[0]
 
-    def analyze(self):
-        children = self.syntax_items
-        if hasattr(self, 'boxes'):
-            children += [box.analyze() for box in self.boxes]
-        if self.box_name != '':
-            name = self.box_name
-        else:
-            name = 'Box (\'%s\')' % self.type
-        return SyntaxItem(name, self.start, self.size, children)
-
 class FullBox(Box):
-    def __init__(self, bytestream, start, name):
-        super().__init__(bytestream, start, name)
-        self.version = self.parse_uint8('Version')
-        bytes = self.bytestream.read(3)
-        self.flags = struct.unpack('!I', bytes.rjust(4))[0]
+    def __init__(self, bytestream, start):
+        super().__init__(bytestream, start)
+        self.version = self.bytestream.getuint8('Version')
+        self.flags = self.bytestream.getint(3, '!I', 'Flags', 4)
 
 class FileTypeBox(Box):
     def __init__(self, bytestream, start):
-        super().__init__(bytestream, start, 'FileTypeBox')
-        self.major_brand = self.parse_fixedstring(4, 'Major Brand')
-        self.minor_version = self.parse_uint32('Minor Version')
+        super().__init__(bytestream, start)
+        self.major_brand = self.bytestream.getfixedstring(4, 'Major Brand')
+        self.minor_version = self.bytestream.getuint32('Minor Version')
         self.compatible_brands = []
-        self.start_syntax_item('Compatible Brands')
+        self.bytestream.start_syntax_item('Compatible Brands')
         while self.bytestream.pos < self.start + self.size:
-            self.compatible_brands.append(self.parse_fixedstring(4, 'Brand'))
-        self.finish_syntax_item()
+            self.compatible_brands.append(self.bytestream.getfixedstring(4, 'Brand'))
+        self.bytestream.finish_syntax_item()
+
+    def box_name():
+        return 'FileTypeBox'
 
     def __str__(self):
         return 'FileTypeBox: major_brand %s, minor_version %s, compatible_brands %s' % (self.major_brand, self.minor_version, self.compatible_brands)
 
 class MovieBox(Box):
     def __init__(self, bytestream, start):
-        super().__init__(bytestream, start, 'MovieBox')
+        super().__init__(bytestream, start)
         self.boxes = self.parseboxes()
+
+    def box_name():
+        return 'MovieBox'
 
     def __str__(self):
         return 'MovieBox'
 
 class MovieHeaderBox(FullBox):
     def __init__(self, bytestream, start):
-        super().__init__(bytestream, start, 'MovieHeaderBox')
+        super().__init__(bytestream, start)
         if self.version == 1:
-            self.creation_time = self.parse_uint64('Creation Time')
-            self.modification_time = self.parse_uint64('Modification Time')
-            self.timescale = self.parse_uint32('Timescale')
-            self.duration = self.parse_uint64('Duration')
+            self.creation_time = self.bytestream.getuint64('Creation Time')
+            self.modification_time = self.bytestream.getuint64('Modification Time')
+            self.timescale = self.bytestream.getuint32('Timescale')
+            self.duration = self.bytestream.getuint64('Duration')
         else:
-            self.creation_time = self.parse_uint32('Creation Time')
-            self.modification_time = self.parse_uint32('Modification Time')
-            self.timescale = self.parse_uint32('Timescale')
-            self.duration = self.parse_uint32('Duration')
-        self.rate = self.parse_uint32('Rate')
-        self.volume = self.parse_uint16('Volume')
-        reserved = self.parse_uint16()
-        reserved = [self.parse_uint32() for i in range(2)]
-        self.start_syntax_item('Matrix')
-        self.matrix = [self.parse_uint32('Value') for i in range(9)]
-        self.finish_syntax_item()
-        pre_defined = [self.parse_uint32() for i in range(6)]
-        self.next_track_ID = self.parse_uint32('Next Track ID')
+            self.creation_time = self.bytestream.getuint32('Creation Time')
+            self.modification_time = self.bytestream.getuint32('Modification Time')
+            self.timescale = self.bytestream.getuint32('Timescale')
+            self.duration = self.bytestream.getuint32('Duration')
+        self.rate = self.bytestream.getuint32('Rate')
+        self.volume = self.bytestream.getuint16('Volume')
+        reserved = self.bytestream.getuint16()
+        reserved = [self.bytestream.getuint32() for i in range(2)]
+        self.bytestream.start_syntax_item('Matrix')
+        self.matrix = [self.bytestream.getuint32('Value') for i in range(9)]
+        self.bytestream.finish_syntax_item()
+        pre_defined = [self.bytestream.getuint32() for i in range(6)]
+        self.next_track_ID = self.bytestream.getuint32('Next Track ID')
+
+    def box_name():
+        return 'MovieHeaderBox'
 
     def __str__(self):
         return 'MovieHeaderBox: creation_time %i, modification_time %i, timescale %i, duration %i, rate %i, volume %i, matrix %s, next_track_ID %i' % (self.creation_time, self.modification_time, self.timescale, self.duration, self.rate, self.volume, self.matrix, self.next_track_ID)
 
 class TrackBox(Box):
     def __init__(self, bytestream, start):
-        super().__init__(bytestream, start, 'TrackBox')
+        super().__init__(bytestream, start)
         self.boxes = self.parseboxes()
+
+    def box_name():
+        return 'TrackBox'
 
     def __str__(self):
         return 'TrackBox'
 
 class TrackHeaderBox(FullBox):
     def __init__(self, bytestream, start):
-        super().__init__(bytestream, start, 'TrackHeaderBox')
+        super().__init__(bytestream, start)
         if self.version == 1:
-            self.creation_time = self.parse_uint64('Creation Time')
-            self.modification_time = self.parse_uint64('Modification Time')
-            self.track_ID = self.parse_uint32('Track ID')
-            reserved = self.parse_uint32()
-            self.duration = self.parse_uint64('Duration')
+            self.creation_time = self.bytestream.getuint64('Creation Time')
+            self.modification_time = self.bytestream.getuint64('Modification Time')
+            self.track_ID = self.bytestream.getuint32('Track ID')
+            reserved = self.bytestream.getuint32()
+            self.duration = self.bytestream.getuint64('Duration')
         else:
-            self.creation_time = self.parse_uint32('Creation Time')
-            self.modification_time = self.parse_uint32('Modification Time')
-            self.track_ID = self.parse_uint32('Track ID')
-            reserved = self.parse_uint32()
-            self.duration = self.parse_uint32('Duration')
-        reserved = [self.parse_uint32() for i in range(2)]
-        self.layer = self.parse_uint16('Layer')
-        self.alternate_group = self.parse_uint16('Alternate Group')
-        self.volume = self.parse_uint16('Volume')
-        reserved = self.parse_uint16()
-        self.start_syntax_item('Matrix')
-        self.matrix = [self.parse_uint32('Value') for i in range(9)]
-        self.finish_syntax_item()
-        self.width = self.parse_uint32('Width')
-        self.height = self.parse_uint32('Height')
+            self.creation_time = self.bytestream.getuint32('Creation Time')
+            self.modification_time = self.bytestream.getuint32('Modification Time')
+            self.track_ID = self.bytestream.getuint32('Track ID')
+            reserved = self.bytestream.getuint32()
+            self.duration = self.bytestream.getuint32('Duration')
+        reserved = [self.bytestream.getuint32() for i in range(2)]
+        self.layer = self.bytestream.getuint16('Layer')
+        self.alternate_group = self.bytestream.getuint16('Alternate Group')
+        self.volume = self.bytestream.getuint16('Volume')
+        reserved = self.bytestream.getuint16()
+        self.bytestream.start_syntax_item('Matrix')
+        self.matrix = [self.bytestream.getuint32('Value') for i in range(9)]
+        self.bytestream.finish_syntax_item()
+        self.width = self.bytestream.getuint32('Width')
+        self.height = self.bytestream.getuint32('Height')
+
+    def box_name():
+        return 'TrackHeaderBox'
 
     def __str__(self):
         return 'TrackHeaderBox: creation_time %i, modification_time %i, track_ID %i, duration %i, layer %i, alternate_group %i, volume %i, matrix %s, width %i, height %i' % (self.creation_time, self.modification_time, self.track_ID, self.duration, self.layer, self.alternate_group, self.volume, self.matrix, self.width, self.height)
 
 class MediaBox(Box):
     def __init__(self, bytestream, start):
-        super().__init__(bytestream, start, 'MediaBox')
+        super().__init__(bytestream, start)
         self.boxes = self.parseboxes()
+
+    def box_name():
+        return 'MediaBox'
 
     def __str__(self):
         return 'MediaBox'
 
 class MediaHeaderBox(FullBox):
     def __init__(self, bytestream, start):
-        super().__init__(bytestream, start, 'MediaHeaderBox')
+        super().__init__(bytestream, start)
         if self.version == 1:
-            self.creation_time = self.parse_uint64('Creation Time')
-            self.modification_time = self.parse_uint64('Modification Time')
-            self.timescale = self.parse_uint32('Timescale')
-            self.duration = self.parse_uint64('Duration')
+            self.creation_time = self.bytestream.getuint64('Creation Time')
+            self.modification_time = self.bytestream.getuint64('Modification Time')
+            self.timescale = self.bytestream.getuint32('Timescale')
+            self.duration = self.bytestream.getuint64('Duration')
         else:
-            self.creation_time = self.parse_uint32('Creation Time')
-            self.modification_time = self.parse_uint32('Modification Time')
-            self.timescale = self.parse_uint32('Timescale')
-            self.duration = self.parse_uint32('Duration')
-        self.language = self.parse_uint16('Language')
-        pre_defined = self.parse_uint16()
+            self.creation_time = self.bytestream.getuint32('Creation Time')
+            self.modification_time = self.bytestream.getuint32('Modification Time')
+            self.timescale = self.bytestream.getuint32('Timescale')
+            self.duration = self.bytestream.getuint32('Duration')
+        self.language = self.bytestream.getuint16('Language')
+        pre_defined = self.bytestream.getuint16()
+
+    def box_name():
+        return 'MediaHeaderBox'
 
     def __str__(self):
         return 'MediaHeaderBox: creation_time %i, modification_time %i, timescale %i, duration %i, language %i' % (self.creation_time, self.modification_time, self.timescale, self.duration, self.language)
 
 class HandlerBox(FullBox):
     def __init__(self, bytestream, start):
-        super().__init__(bytestream, start, 'HandlerBox')
-        pre_defined = self.parse_uint32()
-        self.handler_type = self.parse_fixedstring(4, 'Handler Type')
-        reserved = [self.parse_uint32() for i in range(3)]
-        self.name = self.parse_string(self.size, 'Name')
+        super().__init__(bytestream, start)
+        pre_defined = self.bytestream.getuint32()
+        self.handler_type = self.bytestream.getfixedstring(4, 'Handler Type')
+        reserved = [self.bytestream.getuint32() for i in range(3)]
+        self.name = self.bytestream.getstring(self.size, 'Name')
+
+    def box_name():
+        return 'HandlerBox'
 
     def __str__(self):
         return 'HandlerBox: handler_type %s, name %s' % (self.handler_type, self.name)
 
 class MediaInformationBox(Box):
     def __init__(self, bytestream, start):
-        super().__init__(bytestream, start, 'MediaInformationBox')
+        super().__init__(bytestream, start)
         self.boxes = self.parseboxes()
+
+    def box_name():
+        return 'MediaInformationBox'
 
     def __str__(self):
         return 'MediaInformationBox'
 
 class SampleTableBox(Box):
     def __init__(self, bytestream, start):
-        super().__init__(bytestream, start, 'SampleTableBox')
+        super().__init__(bytestream, start)
         self.boxes = self.parseboxes()
+
+    def box_name():
+        return 'SampleTableBox'
 
     def __str__(self):
         return 'SampleTableBox'
 
 class SampleDescriptionBox(FullBox):
     def __init__(self, bytestream, start):
-        super().__init__(bytestream, start, 'SampleDescriptionBox')
-        entry_count = self.parse_uint32('Entry Count')
+        super().__init__(bytestream, start)
+        entry_count = self.bytestream.getuint32('Entry Count')
         self.boxes = []
         for i in range(entry_count):
             box = parsebox(self.bytestream)
             self.boxes.append(box)
             self.bytestream.seek(box.start + box.size)
 
+    def box_name():
+        return 'SampleDescriptionBox'
+
     def __str__(self):
         return 'SampleDescriptionBox'
 
 class SampleEntry(Box):
-    def __init__(self, bytestream, start, name):
-        super().__init__(bytestream, start, name)
-        reserved = [self.parse_uint8() for i in range(6)]
-        self.data_reference_index = self.parse_uint16('Data Reference Index')
+    def __init__(self, bytestream, start):
+        super().__init__(bytestream, start)
+        reserved = [self.bytestream.getuint8() for i in range(6)]
+        self.data_reference_index = self.bytestream.getuint16('Data Reference Index')
 
     def __str__(self):
         return 'SampleEntry: data_reference_index %i' % self.data_reference_index
 
 class AudioSampleEntry(SampleEntry):
     def __init__(self, bytestream, start):
-        super().__init__(bytestream, start, 'AudioSampleEntry')
-        reserved = [self.parse_uint32() for i in range(2)]
-        self.channel_count = self.parse_uint16('Channel Count')
-        self.samplesize = self.parse_uint16('Sample Size')
-        pre_defined = self.parse_uint16()
-        reserved = self.parse_uint16()
-        self.sample_rate = self.parse_uint32('Sample Rate')
+        super().__init__(bytestream, start)
+        reserved = [self.bytestream.getuint32() for i in range(2)]
+        self.channel_count = self.bytestream.getuint16('Channel Count')
+        self.samplesize = self.bytestream.getuint16('Sample Size')
+        pre_defined = self.bytestream.getuint16()
+        reserved = self.bytestream.getuint16()
+        self.sample_rate = self.bytestream.getuint32('Sample Rate')
         self.boxes = self.parseboxes()
+
+    def box_name():
+        return 'AudioSampleEntry'
 
     def __str__(self):
         return 'AudioSampleEntry: data_reference_index %i, channel_count %i, samplesize %i, sample_rate %i' % (self.data_reference_index, self.channel_count, self.samplesize, self.sample_rate)
 
 class TimeToSampleBox(FullBox):
     def __init__(self, bytestream, start):
-        super().__init__(bytestream, start, 'TimeToSampleBox')
-        entry_count = self.parse_uint32('Entry Count')
+        super().__init__(bytestream, start)
+        entry_count = self.bytestream.getuint32('Entry Count')
         self.entries = []
-        self.start_syntax_item('Entries')
+        self.bytestream.start_syntax_item('Entries')
         for i in range(entry_count):
-            self.start_syntax_item('Entry')
-            tuple = (self.parse_uint32('Time'), self.parse_uint32('Sample'))
+            self.bytestream.start_syntax_item('%i' % i)
+            tuple = (self.bytestream.getuint32('Time'), self.bytestream.getuint32('Sample'))
             self.entries.append(tuple)
-            self.finish_syntax_item()
-        self.finish_syntax_item()
+            self.bytestream.finish_syntax_item()
+        self.bytestream.finish_syntax_item()
+
+    def box_name():
+        return 'TimeToSampleBox'
 
     def __str__(self):
         return 'TimeToSampleBox: %i entries' % len(self.entries)
 
 class DataInformationBox(Box):
     def __init__(self, bytestream, start):
-        super().__init__(bytestream, start, 'DataInformationBox')
+        super().__init__(bytestream, start)
         self.boxes = self.parseboxes()
-        
+
+    def box_name():
+        return 'DataInformationBox'
+
     def __str__(self):
         return 'DataInformationBox'
 
 class DataReferenceBox(FullBox):
     def __init__(self, bytestream, start):
-        super().__init__(bytestream, start, 'DataReferenceBox')
-        entry_count = self.parse_uint32('Entry Count')
+        super().__init__(bytestream, start)
+        entry_count = self.bytestream.getuint32('Entry Count')
         self.boxes = self.parseboxes()
+
+    def box_name():
+        return 'DataReferenceBox'
 
     def __str__(self):
         return 'DataReferenceBox'
 
 class DataEntryUrlBox(FullBox):
     def __init__(self, bytestream, start):
-        super().__init__(bytestream, start, 'DataEntryUrlBox')
-        self.url = self.parse_string(self.size, 'URL')
+        super().__init__(bytestream, start)
+        self.url = self.bytestream.getstring(self.size, 'URL')
     
+    def box_name():
+        return 'DataEntryUrlBox'
+
     def __str__(self):
         return 'DataEntryUrlBox: url %s' % self.url
 
 class SampleSizeBox(FullBox):
     def __init__(self, bytestream, start):
-        super().__init__(bytestream, start, 'SampleSizeBox')
-        self.sample_size = self.parse_uint32('Sample Size')
-        self.sample_count = self.parse_uint32('Sample Count')
+        super().__init__(bytestream, start)
+        self.sample_size = self.bytestream.getuint32('Sample Size')
+        self.sample_count = self.bytestream.getuint32('Sample Count')
         self.sample_sizes = []
         if self.sample_size == 0:
-            self.start_syntax_item('Sample Sizes')
+            self.bytestream.start_syntax_item('Sample Sizes')
             for i in range(self.sample_count):
-                self.sample_sizes.append(self.parse_uint32('Size'))
-            self.finish_syntax_item()
+                self.sample_sizes.append(self.bytestream.getuint32('%i' % i))
+            self.bytestream.finish_syntax_item()
+
+    def box_name():
+        return 'SampleSizeBox'
 
     def __str__(self):
         return 'SampleSizeBox: %i entries' % self.sample_count
@@ -374,16 +344,19 @@ class SampleSizeBox(FullBox):
        
 class SampleToChunkBox(FullBox):
     def __init__(self, bytestream, start):
-        super().__init__(bytestream, start, 'SampleToChunkBox')
-        entry_count = self.parse_uint32('Entry Count')
+        super().__init__(bytestream, start)
+        entry_count = self.bytestream.getuint32('Entry Count')
         self.entries = []
-        self.start_syntax_item('Entries')
+        self.bytestream.start_syntax_item('Entries')
         for i in range(entry_count):
-            self.start_syntax_item('Entry')
-            tuple = (self.parse_uint32('First Chunk'), self.parse_uint32('Samples Per Chunk'), self.parse_uint32())
-            self.finish_syntax_item()
+            self.bytestream.start_syntax_item('%i' % i)
+            tuple = (self.bytestream.getuint32('First Chunk'), self.bytestream.getuint32('Samples Per Chunk'), self.bytestream.getuint32())
+            self.bytestream.finish_syntax_item()
             self.entries.append(tuple)
-        self.finish_syntax_item()
+        self.bytestream.finish_syntax_item()
+
+    def box_name():
+        return 'SampleToChunkBox'
 
     def __str__(self):
         return 'SampleToChunkBox: %i entries' % len(self.entries)
@@ -406,14 +379,17 @@ class SampleToChunkBox(FullBox):
 
 class ChunkOffsetBox(FullBox):
     def __init__(self, bytestream, start):
-        super().__init__(bytestream, start, 'ChunkOffsetBox')
-        entry_count = self.parse_uint32()
+        super().__init__(bytestream, start)
+        entry_count = self.bytestream.getuint32()
         self.entries = []
-        self.start_syntax_item('Entries')
+        self.bytestream.start_syntax_item('Entries')
         for i in range(entry_count):
-            value = self.parse_uint32('Entry')
+            value = self.bytestream.getuint32('%i' % i)
             self.entries.append(value)
-        self.finish_syntax_item()
+        self.bytestream.finish_syntax_item()
+
+    def box_name():
+        return 'ChunkOffsetBox'
 
     def __str__(self):
         return 'ChunkOffsetBox: %i entries' % len(self.entries)
@@ -423,33 +399,45 @@ class ChunkOffsetBox(FullBox):
 
 class FreeSpaceBox(Box):
     def __init__(self, bytestream, start):
-        super().__init__(bytestream, start, 'FreeSpaceBox')
+        super().__init__(bytestream, start)
     
+    def box_name():
+        return 'FreeSpaceBox'
+
     def __str__(self):
         return 'FreeSpaceBox'
 
 
 class MediaDataBox(Box):
     def __init__(self, bytestream, start):
-        super().__init__(bytestream, start, 'MediaDataBox')
+        super().__init__(bytestream, start)
     
+    def box_name():
+        return 'MediaDataBox'
+
     def __str__(self):
         return 'MediaDataBox'
 
 class SoundMediaHeaderBox(FullBox):
     def __init__(self, bytestream, start):
-        super().__init__(bytestream, start, 'SoundMediaHeaderBox')
-        self.balance = self.parse_uint16('Balance')
-        reserved = self.parse_uint16()
+        super().__init__(bytestream, start)
+        self.balance = self.bytestream.getuint16('Balance')
+        reserved = self.bytestream.getuint16()
+
+    def box_name():
+        return 'SoundMediaHeaderBox'
 
     def __str__(self):
         return 'SoundMediaHeaderBox: balance %i' % self.balance
 
 class ESDBox(FullBox):
     def __init__(self, bytestream, start):
-        super().__init__(bytestream, start, 'ESDBox')
+        super().__init__(bytestream, start)
         bytes = self.bytestream.read(self.start + self.size - self.bytestream.pos)
         self.descriptor = ESDescriptor(bytes)
+
+    def box_name():
+        return 'ESDBox'
 
     def __str__(self):
         return 'ESDBox'
@@ -489,8 +477,15 @@ def parsebox(bytestream):
         'mp4a' : AudioSampleEntry,
         'esds' : ESDBox
     }
-    cls = mapping.get(type, Box)
-    return cls(bytestream, start)
+    cls = mapping.get(type)
+    if cls:
+        bytestream.start_syntax_item(cls.box_name())
+        box = cls(bytestream, start)
+    else:
+        bytestream.start_syntax_item('Box (\'%s\')' % type)
+        box = Box(bytestream, start)
+    box.syntax_item = bytestream.finish_syntax_item()
+    return box
 
 class File:
     def __init__(self, bytestream):
@@ -501,6 +496,9 @@ class File:
             box = parsebox(self.bytestream)
             self.boxes.append(box)
             self.bytestream.seek(box.start + box.size)
+
+    def analyze(self):
+        return [box.syntax_item for box in self.boxes]
 
     def findboxes(self, cls):
         boxes = []

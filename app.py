@@ -13,7 +13,7 @@ class Analyzer():
         self.file = File(stream)
 
     def analyze(self):
-        return [box.analyze() for box in self.file.boxes]
+        return self.file.analyze()
 
 class App(QtWidgets.QApplication):
     def __init__(self, args):

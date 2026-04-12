@@ -1,6 +1,8 @@
 import struct
 import io
 
+from syntax import SyntaxItem
+
 class Bitstream:
     def __init__(self, bytes):
         self.bytes = bytes
@@ -41,6 +43,8 @@ class Bytestream:
 
         self.pos = 0
 
+        self.syntax_item_stack = []
+
     def seek(self, pos):
         self.file.seek(pos)
         self.pos = pos
@@ -50,35 +54,69 @@ class Bytestream:
         self.pos += length
         return bytes
 
-    def getuint8(self):
-        bytes = self.file.read(1)
-        self.pos += 1
-        return struct.unpack('!B', bytes)[0]
+    def start_syntax_item(self, name):
+        self.syntax_item_stack.append((name, self.pos, []))
 
-    def getuint16(self):
-        bytes = self.file.read(2)
-        self.pos += 2
-        return struct.unpack('!H', bytes)[0]
+    def finish_syntax_item(self, extra_children=[]):
+        (name, start, children) = self.syntax_item_stack.pop()
+        size = self.pos - start
+        item = SyntaxItem(name, start, size, children + extra_children)
+        self.append_syntax_item(item)
+        return item
 
-    def getuint32(self):
-        bytes = self.file.read(4)
-        self.pos += 4
-        return struct.unpack('!I', bytes)[0]
+    def append_syntax_item(self, item):
+        if len(self.syntax_item_stack) > 0:
+            (_, _, children) = self.syntax_item_stack[-1]
+            children.append(item)
 
-    def getuint64(self):
-        bytes = self.file.read(8)
-        self.pos += 8
-        return struct.unpack('!Q', bytes)[0]
+    def getint(self, size, format, name, just_size=-1):
+        start = self.pos
+        bytes = self.file.read(size)
+        self.pos += size
+        if just_size == -1:
+            just_size = size
+        value = struct.unpack(format, bytes.rjust(just_size))[0]
+        if name:
+            self.append_syntax_item(SyntaxItem('%s: %i' % (name, value), start, size))
+        return value
 
-    def getfixedstring(self, length):
-        bytes = self.file.read(length)
-        self.pos += length
-        return bytes.decode()
+    def getuint8(self, name=None):
+        return self.getint(1, '!B', name)
 
-    def getstring(self, maxsize):
+    def getuint16(self, name=None):
+        return self.getint(2, '!H', name)
+
+    def getuint32(self, name=None):
+        return self.getint(4, '!I', name)
+
+    def getuint64(self, name=None):
+        return self.getint(8, '!Q', name)
+
+    def getfixedstring(self, length, name=None):
+        start = self.pos
+        size = length
+        bytes = self.file.read(size)
+        self.pos += size
+        value = bytes.decode()
+        if name:
+            display = value
+            if display[0] == '\0':
+                display = '<null>'
+            self.append_syntax_item(SyntaxItem('%s: \'%s\'' % (name, display), start, size))
+
+        return value
+
+    def getstring(self, maxsize, name=None):
+        start = self.pos
         string = ''
         bytes = self.file.read(maxsize)
         end = bytes.find(0)
+        size = end - start
         self.pos += end
         self.file.seek(self.pos)
-        return bytes[0:end].decode('utf-8')
+        value = bytes[0:end].decode('utf-8')
+
+        if name:
+            self.append_syntax_item(SyntaxItem('%s: \'%s\'' % (name, value), start, size))
+
+        return value
