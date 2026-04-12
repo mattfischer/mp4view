@@ -11,15 +11,17 @@ class Bitstream:
         self.syntax_item_stack = []
         self.byte_start = byte_start
 
-    def start_syntax_item(self, name):
+    def start_syntax_item(self, name=None):
         start = int(self.pos / 8)
         self.syntax_item_stack.append((name, start, []))
 
-    def finish_syntax_item(self, extra_children=[]):
-        (name, start, children) = self.syntax_item_stack.pop()
+    def finish_syntax_item(self, name=None):
+        (start_name, start, children) = self.syntax_item_stack.pop()
         end = int(self.pos / 8)
         size = max(end - start, 1)
-        item = SyntaxItem(name, start + self.byte_start, size, children + extra_children)
+        if name is None:
+            name = start_name
+        item = SyntaxItem(name, start + self.byte_start, size, children)
         self.append_syntax_item(item)
         return item
 
@@ -83,15 +85,17 @@ class Bytestream:
         self.pos += length
         return bytes
 
-    def start_syntax_item(self, name, start=-1):
+    def start_syntax_item(self, name=None, start=-1):
         if start == -1:
             start = self.pos
         self.syntax_item_stack.append((name, start, []))
 
-    def finish_syntax_item(self, extra_children=[]):
-        (name, start, children) = self.syntax_item_stack.pop()
+    def finish_syntax_item(self, name=None):
+        (start_name, start, children) = self.syntax_item_stack.pop()
         size = self.pos - start
-        item = SyntaxItem(name, start, size, children + extra_children)
+        if name is None:
+            name = start_name
+        item = SyntaxItem(name, start, size, children)
         self.append_syntax_item(item)
         return item
 

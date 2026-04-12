@@ -143,7 +143,7 @@ class TrackHeaderBox(FullBox):
         self.volume = self.bytestream.getuint16('Volume')
         reserved = self.bytestream.getuint16()
         self.bytestream.start_syntax_item('Matrix')
-        self.matrix = [self.bytestream.getuint32('Value') for i in range(9)]
+        self.matrix = [self.bytestream.getuint32('%i' % i) for i in range(9)]
         self.bytestream.finish_syntax_item()
         self.width = self.bytestream.getuint32('Width')
         self.height = self.bytestream.getuint32('Height')
@@ -272,10 +272,10 @@ class TimeToSampleBox(FullBox):
         self.entries = []
         self.bytestream.start_syntax_item('Entries')
         for i in range(entry_count):
-            self.bytestream.start_syntax_item('%i' % i)
-            tuple = (self.bytestream.getuint32('Time'), self.bytestream.getuint32('Sample'))
+            self.bytestream.start_syntax_item()
+            tuple = (self.bytestream.getuint32(), self.bytestream.getuint32())
             self.entries.append(tuple)
-            self.bytestream.finish_syntax_item()
+            self.bytestream.finish_syntax_item('Time: %i, Sample: %i' % (tuple[0], tuple[1]))
         self.bytestream.finish_syntax_item()
 
     def box_name():
@@ -349,9 +349,9 @@ class SampleToChunkBox(FullBox):
         self.entries = []
         self.bytestream.start_syntax_item('Entries')
         for i in range(entry_count):
-            self.bytestream.start_syntax_item('%i' % i)
-            tuple = (self.bytestream.getuint32('First Chunk'), self.bytestream.getuint32('Samples Per Chunk'), self.bytestream.getuint32())
-            self.bytestream.finish_syntax_item()
+            self.bytestream.start_syntax_item()
+            tuple = (self.bytestream.getuint32(), self.bytestream.getuint32(), self.bytestream.getuint32())
+            self.bytestream.finish_syntax_item('First Chunk: %i, Samples Per Chunk: %i' % (tuple[0], tuple[1]))
             self.entries.append(tuple)
         self.bytestream.finish_syntax_item()
 

@@ -1,21 +1,18 @@
 import stream
 
-from syntax import SyntaxItem
-
 class BaseDescriptor:
     def __init__(self, bitstream):
         self.bitstream = bitstream
         self.tag = self.bitstream.getbits(8, 'Tag')
-        start = self.bitstream.pos // 8
+
+        self.bitstream.start_syntax_item()
         nextByte = self.bitstream.getbits(1)
         sizeOfInstance = self.bitstream.getbits(7)
         while nextByte:
             nextByte = self.bitstream.getbits(1)
             sizeOfInstance = sizeOfInstance << 7 | self.bitstream.getbits(7)
-        end = self.bitstream.pos // 8
-        size = max(end - start, 1)
         self.size = sizeOfInstance
-        bitstream.append_syntax_item(SyntaxItem('Size: %i' % self.size, start + bitstream.byte_start, size))
+        bitstream.finish_syntax_item('Size: %i' % self.size)
 
 class DecoderConfigDescriptor(BaseDescriptor):
     def __init__(self, bitstream):
@@ -71,13 +68,11 @@ class AudioSpecificConfig(BaseDescriptor):
         print(prefix + '  ' + str(self.specificConfig))
 
     def GetAudioObjectType(self):
-        start = self.bitstream.pos // 8
+        self.bitstream.start_syntax_item()
         audioObjectType = self.bitstream.getbits(5)
         if audioObjectType == 31:
             audioObjectType = 32 + self.bitstream.getbits(6)
-        end = self.bitstream.pos // 8
-        size = max(end - start, 1)
-        self.bitstream.append_syntax_item(SyntaxItem('Audio Object Type: %i' % audioObjectType, start + self.bitstream.byte_start, size))
+        self.bitstream.finish_syntax_item('Audio Object Type: %i' % audioObjectType)
 
         return audioObjectType
 
