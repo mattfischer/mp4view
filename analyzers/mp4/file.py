@@ -43,7 +43,7 @@ class FullBox(Box):
     def __init__(self, bytestream, start, box_name):
         super().__init__(bytestream, start, box_name)
         self.version = self.bytestream.getuint8('version')
-        self.flags = self.bytestream.getint(3, '!I', 'flags', 4)
+        self.flags = self.bytestream.getuint(3, 'flags')
 
 class FileTypeBox(Box):
     def __init__(self, bytestream, start):

@@ -104,28 +104,30 @@ class Bytestream:
             (_, _, children) = self.syntax_item_stack[-1]
             children.append(item)
 
-    def getint(self, size, format, name, just_size=-1):
+    def getuint(self, size, name):
         start = self.pos
         bytes = self.file.read(size)
         self.pos += size
-        if just_size == -1:
-            just_size = size
-        value = struct.unpack(format, bytes.rjust(just_size))[0]
+
+        value = 0
+        for byte in bytes:
+            value = value << 8 | byte
+        
         if name:
             self.append_syntax_item(SyntaxItem('%s: %i' % (name, value), start, size))
         return value
 
     def getuint8(self, name=None):
-        return self.getint(1, '!B', name)
+        return self.getuint(1, name)
 
     def getuint16(self, name=None):
-        return self.getint(2, '!H', name)
+        return self.getuint(2, name)
 
     def getuint32(self, name=None):
-        return self.getint(4, '!I', name)
+        return self.getuint(4, name)
 
     def getuint64(self, name=None):
-        return self.getint(8, '!Q', name)
+        return self.getuint(8, name)
 
     def getfixedstring(self, length, name=None):
         start = self.pos
