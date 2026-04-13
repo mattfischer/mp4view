@@ -30,7 +30,7 @@ class Bitstream:
             (_, _, children) = self.syntax_item_stack[-1]
             children.append(item)
 
-    def getbits(self, bits, name=None):
+    def getbits(self, bits, name=None, format=None):
         start = int(self.pos / 8)
         end = int((self.pos + bits - 1) / 8)
         mod = (self.pos + bits - 1) % 8
@@ -50,7 +50,11 @@ class Bitstream:
 
         size = max(end - start, 1)
         if name:
-            self.append_syntax_item(SyntaxItem('%s: %i' % (name, val), start + self.byte_start, size))
+            if format:
+                title = '%s: %s' % (name, format(val))
+            else:
+                title = '%s: %i' % (name, val)
+            self.append_syntax_item(SyntaxItem(title, start + self.byte_start, size))
         
         return val
 
