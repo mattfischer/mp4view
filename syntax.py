@@ -96,3 +96,19 @@ class SyntaxAnalyzerView(QtWidgets.QWidget):
         item = index.internalPointer()
         self.hex_dump_view.set_highlight(item.start, item.start + item.size)
         self.hex_dump_view.ensure_visible(item.start)
+
+def format_fixed16(value):
+    return float(value) / 65536
+
+def format_fixed8(value):
+    return float(value) / 256
+
+class format_enum:
+    def __init__(self, values):
+        self.values = values
+
+    def __call__(self, value):
+        if value in self.values:
+            return '%i (%s)' % (value, self.values[value])
+        else:
+            return '%i' % value

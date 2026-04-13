@@ -1,12 +1,6 @@
 import stream
 
-def enum_format(values):
-    def f(value):
-        if value in values:
-            return '%i (%s)' % (value, values[value])
-        else:
-            return '%i' % value
-    return f
+from syntax import format_enum
 
 class BaseDescriptor:
     def __init__(self, bitstream):
@@ -22,20 +16,20 @@ class BaseDescriptor:
         self.size = sizeOfInstance
         bitstream.finish_syntax_item('size: %i' % self.size)
 
-objectTypeIndication_enum = {
+enum_objectTypeIndication = format_enum({
     0x40: 'Audio ISO/IEC 14496-3'
-}
+})
 
-streamType_enum = {
+enum_streamType = format_enum({
     0x05: 'AudioStream'
-}
+})
 
 class DecoderConfigDescriptor(BaseDescriptor):
     def __init__(self, bitstream):
         bitstream.start_syntax_item('DecoderConfigDescriptor')
         super().__init__(bitstream)
-        self.objectTypeIndication = self.bitstream.getbits(8, 'objectTypeIndication', format=enum_format(objectTypeIndication_enum))
-        self.streamType = self.bitstream.getbits(6, 'streamType', format=enum_format(streamType_enum))
+        self.objectTypeIndication = self.bitstream.getbits(8, 'objectTypeIndication', format=enum_objectTypeIndication)
+        self.streamType = self.bitstream.getbits(6, 'streamType', format=enum_streamType)
         self.upStream = self.bitstream.getbits(1, 'upStream')
         reserved = self.bitstream.getbits(1)
         self.bufferSizeDB = self.bitstream.getbits(24, 'bufferSizeDB')
@@ -45,14 +39,14 @@ class DecoderConfigDescriptor(BaseDescriptor):
             self.decSpecificInfo = AudioSpecificConfig(self.bitstream)
         bitstream.finish_syntax_item()
 
-audioObjectType_enum = {
+enum_audioObjectType = format_enum({
     0x1: 'AAC MAIN',
     0x2: 'AAC LC',
     0x3: 'AAC SSR',
     0x4: 'AAC LTP'
-}
+})
 
-samplingFrequencyIndex_enum = {
+enum_samplingFrequencyIndex = format_enum({
     0x0: '96000', 
     0x1: '88200', 
     0x2: '64000', 
@@ -66,14 +60,14 @@ samplingFrequencyIndex_enum = {
     0xa: '11025', 
     0xb: '8000',
     0xc: '7350'
-}
+})
 
 class AudioSpecificConfig(BaseDescriptor):
     def __init__(self, bitstream):
         bitstream.start_syntax_item('AudioSpecificConfig')
         super().__init__(bitstream)
         self.audioObjectType = self.GetAudioObjectType()
-        self.samplingFrequencyIndex = self.bitstream.getbits(4, 'samplingFrequencyIndex', format=enum_format(samplingFrequencyIndex_enum))
+        self.samplingFrequencyIndex = self.bitstream.getbits(4, 'samplingFrequencyIndex', format=enum_samplingFrequencyIndex)
         if self.samplingFrequencyIndex == 0xf:
             self.samplingFrequency = self.bitstream.getbits(24, 'samplingFrequency')
         self.channelConfiguration = self.bitstream.getbits(4, 'channelConfiguration')
@@ -98,8 +92,7 @@ class AudioSpecificConfig(BaseDescriptor):
         if audioObjectType == 31:
             audioObjectType = 32 + self.bitstream.getbits(6)
 
-        format = enum_format(audioObjectType_enum)
-        self.bitstream.finish_syntax_item('audioObjectType: %s' % format(audioObjectType))
+        self.bitstream.finish_syntax_item('audioObjectType: %s' % enum_audioObjectType(audioObjectType))
 
         return audioObjectType
 

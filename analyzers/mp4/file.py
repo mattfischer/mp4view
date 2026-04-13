@@ -1,17 +1,13 @@
 from analyzers.mp4.es import ESDescriptor
 
+from syntax import format_fixed16, format_fixed8
+
 import datetime
 
 def mp4date(seconds):
     start = datetime.datetime(1904, 1, 1)
     date = start + datetime.timedelta(seconds=seconds)
     return date.strftime('%d/%m/%y %H:%M:%S')
-
-def fixed16(value):
-    return float(value) / 65536
-
-def fixed8(value):
-    return float(value) / 256
 
 class Box:
     def __init__(self, bytestream, start, box_name=None):
@@ -74,25 +70,25 @@ class MovieHeaderBox(FullBox):
     def __init__(self, bytestream, start):
         super().__init__(bytestream, start, 'MovieHeaderBox')
 
-        def duration_format(value):
+        def format_duration(value):
             return '%.2f s' % (float(value) / self.timescale)
 
         if self.version == 1:
             self.creation_time = self.bytestream.getuint64('creation_time', format=mp4date)
             self.modification_time = self.bytestream.getuint64('modification_time', format=mp4date)
             self.timescale = self.bytestream.getuint32('timescale')
-            self.duration = self.bytestream.getuint64('duration', format=duration_format)
+            self.duration = self.bytestream.getuint64('duration', format=format_duration)
         else:
             self.creation_time = self.bytestream.getuint32('creation_time', format=mp4date)
             self.modification_time = self.bytestream.getuint32('modification_time', format=mp4date)
             self.timescale = self.bytestream.getuint32('timescale')
-            self.duration = self.bytestream.getuint32('duration', format=duration_format)
-        self.rate = self.bytestream.getuint32('rate', format=fixed16)
-        self.volume = self.bytestream.getuint16('volume', format=fixed8)
+            self.duration = self.bytestream.getuint32('duration', format=format_duration)
+        self.rate = self.bytestream.getuint32('rate', format=format_fixed16)
+        self.volume = self.bytestream.getuint16('volume', format=format_fixed8)
         reserved = self.bytestream.getuint16()
         reserved = [self.bytestream.getuint32() for i in range(2)]
         self.bytestream.start_syntax_item('matrix')
-        self.matrix = [self.bytestream.getuint32('%i' % i, format=fixed16) for i in range(9)]
+        self.matrix = [self.bytestream.getuint32('%i' % i, format=format_fixed16) for i in range(9)]
         self.bytestream.finish_syntax_item()
         pre_defined = [self.bytestream.getuint32() for i in range(6)]
         self.next_track_ID = self.bytestream.getuint32('next_track_ID')
@@ -121,10 +117,10 @@ class TrackHeaderBox(FullBox):
         reserved = [self.bytestream.getuint32() for i in range(2)]
         self.layer = self.bytestream.getuint16('layer')
         self.alternate_group = self.bytestream.getuint16('alternate_group')
-        self.volume = self.bytestream.getuint16('volume', format=fixed8)
+        self.volume = self.bytestream.getuint16('volume', format=format_fixed8)
         reserved = self.bytestream.getuint16()
         self.bytestream.start_syntax_item('matrix')
-        self.matrix = [self.bytestream.getuint32('%i' % i, format=fixed16) for i in range(9)]
+        self.matrix = [self.bytestream.getuint32('%i' % i, format=format_fixed16) for i in range(9)]
         self.bytestream.finish_syntax_item()
         self.width = self.bytestream.getuint32('width')
         self.height = self.bytestream.getuint32('height')
@@ -196,7 +192,7 @@ class AudioSampleEntry(SampleEntry):
         self.samplesize = self.bytestream.getuint16('samplesize')
         pre_defined = self.bytestream.getuint16()
         reserved = self.bytestream.getuint16()
-        self.sample_rate = self.bytestream.getuint32('sample_rate', format=fixed16)
+        self.sample_rate = self.bytestream.getuint32('sample_rate', format=format_fixed16)
         self.boxes = self.parseboxes()
 
 class TimeToSampleBox(FullBox):
