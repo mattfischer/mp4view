@@ -2,18 +2,8 @@ import sys
 
 from PySide2 import QtWidgets
 
-from hexdump import HexDumpView
-from syntax import SyntaxAnalyzerView, SyntaxItem
 from stream import Bytestream
-from analyzers.mp4.file import File
-
-class Analyzer():
-    def __init__(self, stream):
-        self.stream = stream
-        self.file = File(stream)
-
-    def analyze(self):
-        return self.file.analyze()
+import analyzers.mp4
 
 class App(QtWidgets.QApplication):
     def __init__(self, args):
@@ -25,9 +15,11 @@ class App(QtWidgets.QApplication):
         file = open('test.m4a', 'rb')
         self.stream = Bytestream(file)
 
-        analyzer = Analyzer(self.stream)
-        self.analyzer_view = SyntaxAnalyzerView(analyzer)
-        self.main_window.setCentralWidget(self.analyzer_view)
+        self.tab_widget = QtWidgets.QTabWidget()
+        analyzer = analyzers.mp4.Analyzer(self.stream)
+        for view in analyzer.analyze():
+            self.tab_widget.addTab(view, view.title)
+        self.main_window.setCentralWidget(self.tab_widget)
         self.main_window.show()
 
 if __name__ == "__main__":

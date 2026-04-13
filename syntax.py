@@ -19,10 +19,10 @@ class SyntaxItem:
             return self.parent.children.index(self)
         return 0
 
-class SyntaxAnalyzerModel(QtCore.QAbstractItemModel):
-    def __init__(self, analyzer):
-        super(SyntaxAnalyzerModel, self).__init__()
-        self.items = analyzer.analyze()
+class SyntaxTreeModel(QtCore.QAbstractItemModel):
+    def __init__(self, syntax_items):
+        super(SyntaxTreeModel, self).__init__()
+        self.items = syntax_items
 
     def rowCount(self, parent=QtCore.QModelIndex()):
         if parent.isValid():
@@ -74,10 +74,11 @@ class SyntaxAnalyzerModel(QtCore.QAbstractItemModel):
             child.parent = item
         item.analyzer = None
 
-class SyntaxAnalyzerView(QtWidgets.QWidget):
-    def __init__(self, analyzer, parent=None):
-        super(SyntaxAnalyzerView, self).__init__(parent)
-        self.model = SyntaxAnalyzerModel(analyzer)
+class SyntaxView(QtWidgets.QWidget):
+    def __init__(self, title, stream, syntax_items, parent=None):
+        super(SyntaxView, self).__init__(parent)
+        self.title = title
+        self.model = SyntaxTreeModel(syntax_items)
 
         layout = QtWidgets.QHBoxLayout()
 
@@ -87,7 +88,7 @@ class SyntaxAnalyzerView(QtWidgets.QWidget):
         self.tree_view.clicked.connect(self.on_item_clicked)
         layout.addWidget(self.tree_view, 1)
 
-        self.hex_dump_view = HexDumpView(analyzer.stream)
+        self.hex_dump_view = HexDumpView(stream)
         layout.addWidget(self.hex_dump_view)
 
         self.setLayout(layout)

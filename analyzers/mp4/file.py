@@ -1,4 +1,4 @@
-from analyzers.mp4.es import ESDescriptor
+from .es import ESDescriptor
 
 from syntax import format_fixed16, format_fixed8
 
@@ -355,7 +355,7 @@ class File:
             self.boxes.append(box)
             self.bytestream.seek(box.start + box.size)
 
-    def analyze(self):
+    def syntax_items(self):
         return [box.syntax_item for box in self.boxes]
 
     def findboxes(self, cls):
