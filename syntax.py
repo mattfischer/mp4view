@@ -75,28 +75,33 @@ class SyntaxTreeModel(QtCore.QAbstractItemModel):
         item.analyzer = None
 
 class SyntaxView(QtWidgets.QWidget):
-    def __init__(self, title, stream, syntax_items, parent=None):
+    def __init__(self, title, stream=None, syntax_items=[], parent=None):
         super(SyntaxView, self).__init__(parent)
         self.title = title
-        self.model = SyntaxTreeModel(syntax_items)
 
         layout = QtWidgets.QHBoxLayout()
 
         self.tree_view = QtWidgets.QTreeView()
-        self.tree_view.setModel(self.model)
         self.tree_view.setHeaderHidden(True)
         self.tree_view.clicked.connect(self.on_item_clicked)
         layout.addWidget(self.tree_view, 1)
 
-        self.hex_dump_view = HexDumpView(stream)
-        layout.addWidget(self.hex_dump_view)
+        self.hexdump_view = HexDumpView()
+        layout.addWidget(self.hexdump_view)
 
         self.setLayout(layout)
+
+        self.update_syntax(stream, syntax_items)
     
+    def update_syntax(self, stream, syntax_items):
+        self.model = SyntaxTreeModel(syntax_items)
+        self.tree_view.setModel(self.model)
+        self.hexdump_view.update_stream(stream)
+
     def on_item_clicked(self, index):
         item = index.internalPointer()
-        self.hex_dump_view.set_highlight(item.start, item.start + item.size)
-        self.hex_dump_view.ensure_visible(item.start)
+        self.hexdump_view.set_highlight(item.start, item.start + item.size)
+        self.hexdump_view.ensure_visible(item.start)
 
 def format_fixed16(value):
     return float(value) / 65536

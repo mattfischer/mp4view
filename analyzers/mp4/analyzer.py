@@ -1,6 +1,40 @@
+import io
+
 from .file import File
 
+from stream import Bytestream
 from syntax import SyntaxView
+
+from PySide2 import QtWidgets
+
+class AACStreamView(QtWidgets.QWidget):
+    def __init__(self, file):
+        super(AACStreamView, self).__init__()
+        self.title = 'AAC Streams'
+        self.file = file
+
+        hlayout = QtWidgets.QHBoxLayout()
+        hlayout.addWidget(QtWidgets.QLabel('Sample:'))
+        self.spinbox = QtWidgets.QSpinBox()
+        self.spinbox.valueChanged.connect(self.spinbox_changed)
+        hlayout.addWidget(self.spinbox)
+
+        vlayout = QtWidgets.QVBoxLayout()
+        vlayout.addLayout(hlayout)
+
+        tabs = QtWidgets.QTabWidget()
+        self.syntax_view = SyntaxView('Syntax')
+        tabs.addTab(self.syntax_view, self.syntax_view.title)
+        vlayout.addWidget(tabs)
+
+        self.setLayout(vlayout)
+
+        self.spinbox_changed(0)
+
+    def spinbox_changed(self, value):
+        sample = self.file.getsample(value)
+        stream = Bytestream(io.BytesIO(sample))
+        self.syntax_view.update_syntax(stream, [])
 
 class Analyzer:
     def __init__(self, stream):
@@ -8,5 +42,7 @@ class Analyzer:
         self.file = File(stream)
 
     def analyze(self):
-        view = SyntaxView('MP4 File', self.stream, self.file.syntax_items())
-        return [view]
+        views = []
+        views.append(SyntaxView('MP4 File', self.stream, self.file.syntax_items()))
+        views.append(AACStreamView(self.file))
+        return views

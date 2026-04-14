@@ -2,7 +2,7 @@ import os.path
 from PySide2 import QtGui, QtWidgets
 
 class HexDumpView(QtWidgets.QAbstractScrollArea):
-    def __init__(self, stream):
+    def __init__(self):
         super(HexDumpView, self).__init__()
         self.font = QtGui.QFontDatabase.systemFont(QtGui.QFontDatabase.FixedFont)
         metrics = QtGui.QFontMetrics(self.font)
@@ -10,13 +10,24 @@ class HexDumpView(QtWidgets.QAbstractScrollArea):
         self.line_spacing = metrics.lineSpacing()
         self.setMinimumWidth(16*self.advance + 60)
 
+        self.update_stream(None)
+
+    def update_stream(self, stream):
         self.stream = stream
-        num_lines = self.stream.size / 16
-        self.verticalScrollBar().setRange(0, num_lines * self.line_spacing)
+
+        if self.stream:
+            num_lines = self.stream.size / 16
+            self.verticalScrollBar().setRange(0, num_lines * self.line_spacing)
+        else:
+            self.verticalScrollBar().setRange(0, 0)
 
         self.highlight = (-1, -1)
+        self.viewport().update()
 
     def paintEvent(self, event):
+        if self.stream is None:
+            return
+
         painter = QtGui.QPainter(self.viewport())
         painter.setFont(self.font)
 
