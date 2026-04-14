@@ -98,6 +98,9 @@ class SyntaxView(QtWidgets.QWidget):
         self.tree_view.setModel(self.model)
         self.hexdump_view.update_stream(stream)
 
+    def set_highlight(self, start, size):
+        self.hexdump_view.set_highlight(start, start + size)
+
     def on_item_clicked(self, index):
         item = index.internalPointer()
         self.hexdump_view.set_highlight(item.start, item.start + item.size)

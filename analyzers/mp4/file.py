@@ -375,6 +375,13 @@ class File:
         esd_box = sample_table.findbox(SampleDescriptionBox).findbox(AudioSampleEntry).findbox(ESDBox)
         return esd_box.descriptor
 
+    def numsamples(self):
+        tracks = self.findbox(MovieBox).findboxes(TrackBox)
+        track = tracks[0]
+        sample_table = track.findbox(MediaBox).findbox(MediaInformationBox).findbox(SampleTableBox)
+        sample_sizes = sample_table.findbox(SampleSizeBox)
+        return sample_sizes.sample_count
+
     def getsample(self, idx):
         tracks = self.findbox(MovieBox).findboxes(TrackBox)
         track = tracks[0]

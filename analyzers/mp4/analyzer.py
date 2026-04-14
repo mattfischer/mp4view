@@ -17,6 +17,7 @@ class AACStreamView(QtWidgets.QWidget):
         hlayout = QtWidgets.QHBoxLayout()
         hlayout.addWidget(QtWidgets.QLabel('Sample:'))
         self.spinbox = QtWidgets.QSpinBox()
+        self.spinbox.setMaximum(self.file.numsamples())
         self.spinbox.valueChanged.connect(self.spinbox_changed)
         hlayout.addWidget(self.spinbox)
 
@@ -38,6 +39,7 @@ class AACStreamView(QtWidgets.QWidget):
         self.aac.parse(bytes, location, self.file.es_descriptor())
 
         self.syntax_view.update_syntax(self.file.bytestream, self.aac.syntax_items())
+        self.syntax_view.set_highlight(location, len(bytes))
 
 class Analyzer:
     def __init__(self, stream):

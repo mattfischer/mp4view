@@ -1,6 +1,7 @@
 import stream
 from . import aac_tables
 import math
+from syntax import format_enum
 
 ID_SCE = 0x0
 ID_CPE = 0x1
@@ -16,12 +17,26 @@ LONG_START_SEQUENCE = 1
 EIGHT_SHORT_SEQUENCE = 2
 LONG_STOP_SEQUENCE = 3
 
+enum_window_sequence = format_enum({
+    0: 'ONLY_LONG_SEQUENCE',
+    1: 'LONG_START_SEQUENCE',
+    2: 'EIGHT_SHORT_SEQUENCE',
+    3: 'LONG_STOP_SEQUENCE'
+})
+
 PRED_SFB_MAX = 1000
 
 ZERO_HCB = 0
 NOISE_HCB = 13
 INTENSITY_HCB2 = 14
 INTENSITY_HCB = 15
+
+enum_hcb = format_enum({
+    0: 'ZERO_HCB',
+    13: 'NOISE_HCB',
+    14: 'INTENSITY_HCB2',
+    15: 'INTENSITY_HCB'
+})
 
 FIRST_PAIR_HCB = 5
 ESC_HCB = 11
@@ -136,7 +151,7 @@ class AAC:
         self.bitstream.start_syntax_item('ics_info')
         ics_info = Object()
         ics_reserved_bit = self.bitstream.getbits(1)
-        ics_info.window_sequence = self.bitstream.getbits(2, 'window_sequence')
+        ics_info.window_sequence = self.bitstream.getbits(2, 'window_sequence', format=enum_window_sequence)
         ics_info.window_shape = self.bitstream.getbits(1, 'window_shape')
         if ics_info.window_sequence == EIGHT_SHORT_SEQUENCE:
             ics_info.max_sfb = self.bitstream.getbits(4, 'max_sfb')
@@ -235,8 +250,7 @@ class AAC:
     def section_data(self, ics_info, params):
         self.bitstream.start_syntax_item('section_data')
         sect = Object()
-        window_sequence = ONLY_LONG_SEQUENCE
-        if window_sequence == EIGHT_SHORT_SEQUENCE:
+        if ics_info.window_sequence == EIGHT_SHORT_SEQUENCE:
             sect_esc_val = (1 << 3) - 1
             sect_esc_len = 3
         else:
@@ -268,7 +282,7 @@ class AAC:
                     else:
                         break
                 sect_len += sect_len_incr
-                self.bitstream.finish_syntax_item('cb: %i, sect_len: %i' % (cb, sect_len))
+                self.bitstream.finish_syntax_item('cb: %s, sect_len: %i' % (enum_hcb(cb), sect_len))
 
                 sect.sect_start[g].append(k)
                 sect.sect_end[g].append(k + sect_len)
@@ -445,7 +459,7 @@ class AAC:
                         coef_len -= 1
                     for i in range(tns.order[w][filt]):
                         tns.coef[w][filt][i] = self.bitstream.getbits(coef_len, 'coef %i' % i)
-                self.bitstream.append_syntax_item()
+                self.bitstream.finish_syntax_item()
             self.bitstream.finish_syntax_item()
 
         self.bitstream.finish_syntax_item()
