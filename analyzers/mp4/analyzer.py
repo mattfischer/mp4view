@@ -1,6 +1,7 @@
 import io
 
 from .file import File
+from .aac import AAC
 
 from stream import Bytestream
 from syntax import SyntaxView
@@ -32,9 +33,11 @@ class AACStreamView(QtWidgets.QWidget):
         self.spinbox_changed(0)
 
     def spinbox_changed(self, value):
-        sample = self.file.getsample(value)
-        stream = Bytestream(io.BytesIO(sample))
-        self.syntax_view.update_syntax(stream, [])
+        (bytes, location) = self.file.getsample(value)
+        self.aac = AAC()
+        self.aac.parse(bytes, location, self.file.es_descriptor())
+
+        self.syntax_view.update_syntax(self.file.bytestream, self.aac.syntax_items())
 
 class Analyzer:
     def __init__(self, stream):

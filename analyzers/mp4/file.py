@@ -393,4 +393,4 @@ class File:
         
         self.bytestream.file.seek(location)
         bytes = self.bytestream.file.read(size)
-        return bytes
+        return (bytes, location)
