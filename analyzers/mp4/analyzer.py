@@ -1,7 +1,7 @@
 import math
 
 from .file import File
-from .aac import AAC
+from .aac import AAC, INTENSITY_HCB, INTENSITY_HCB2
 
 from syntax import SyntaxView
 
@@ -24,10 +24,12 @@ class AACSpectrumScalefactorPlot(QtWidgets.QWidget):
         ics = self.aac.block.cpe.ics[self.channel]
 
         prev = None
-        brush = QtGui.QBrush(QtGui.QColor(192, 192, 192))
-        pen = QtGui.QPen(QtGui.QBrush(QtGui.QColor(128, 176, 224)), 1)
-        painter.setPen(pen)
+        regular_brush = QtGui.QBrush(QtGui.QColor(192, 192, 192))
+        intensity_brush = QtGui.QBrush(QtGui.QColor(192, 192, 0))
         
+        ms_pen = QtGui.QPen(QtGui.QBrush(QtGui.QColor(128, 176, 224)), 2)
+        lr_pen = QtGui.QPen(QtGui.QBrush(QtGui.QColor(128, 224, 176)), 2)
+    
         for sfb in range(ics.ics_info.max_sfb):
             start = ics.params.swb_offset[sfb]
             end = ics.params.swb_offset[sfb+1]
@@ -37,7 +39,19 @@ class AACSpectrumScalefactorPlot(QtWidgets.QWidget):
             ex = self.width() * end / 512
             w = ex - sx - 1
             h = self.height() * val/256
+
+            if ics.section_data.sfb_cb[0][sfb] in (INTENSITY_HCB, INTENSITY_HCB2):
+                brush = intensity_brush
+            else:
+                brush = regular_brush
+
             painter.fillRect(sx, self.height() - h, w, h, brush)
+
+            ms_used = (self.aac.block.cpe.ms_mask_present == 2 or self.aac.block.cpe.ms_used[0][sfb])
+            if ms_used:
+                painter.setPen(ms_pen)
+            else:
+                painter.setPen(lr_pen)
 
             for bin in range(start, end):
                 s = ics.spectral_data.spec[0][0][sfb][bin - start]
