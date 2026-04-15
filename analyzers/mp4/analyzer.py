@@ -42,16 +42,14 @@ class AACSpectrumPlot(QtWidgets.QWidget):
                 painter.drawLine(0, h2 + h, self.width(), h2 + h)
                 painter.drawLine(0, h2 - h, self.width(), h2 - h)
 
-        for p in range(5):
-            painter.setPen(pen_major)
-            w = self.width() * p / 5
-            painter.drawLine(w, 0, w, self.height())
+        for i in range(0, 512, 16):
+            if i % 64 == 0:
+                painter.setPen(pen_major)
+            else:
+                painter.setPen(pen_minor)
 
-            painter.setPen(pen_minor)
-            x = 10 ** p
-            for i in range(2, 10):
-                w = self.width() * math.log(x * i, 10) / 5
-                painter.drawLine(w, 0, w, self.height())
+            w = self.width() * i / 512
+            painter.drawLine(w, 0, w, self.height())
 
         brush = QtGui.QBrush(QtGui.QColor(192, 192, 192))
         for sfb in range(self.ics.ics_info.max_sfb):
@@ -59,8 +57,8 @@ class AACSpectrumPlot(QtWidgets.QWidget):
             end = self.ics.params.swb_offset[sfb+1]
             val = self.ics.scale_factor_data.sf[0][sfb]
 
-            sx = self.width() * math.log(1 + 44 * start, 10) / 5
-            ex = self.width() * math.log(1 + 44 * end, 10) / 5
+            sx = self.width() * start / 512
+            ex = self.width() * end / 512
             w = ex - sx - 1
             h = self.height() * val/256
             painter.fillRect(sx, self.height() - h, w, h, brush)
@@ -70,7 +68,7 @@ class AACSpectrumPlot(QtWidgets.QWidget):
         pen = QtGui.QPen(QtGui.QBrush(QtGui.QColor(128, 176, 224)), 1)
         painter.setPen(pen)
         for i in range(num):
-            x = self.width() * math.log(1 + 44 * i, 10) / 5
+            x = self.width() * i / num
             s = self.spectrum_data[0][0][i]
             sign = 1 if s > 0 else -1
             y = self.height() * (1 - sign * math.log(1 + abs(s), 10) / 7) / 2
