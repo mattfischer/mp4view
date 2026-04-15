@@ -35,8 +35,8 @@ class AACSpectrumScalefactorPlot(QtWidgets.QWidget):
             end = ics.params.swb_offset[sfb+1]
             val = ics.scale_factor_data.sf[0][sfb]
 
-            sx = self.width() * start / 512
-            ex = self.width() * end / 512
+            sx = self.width() * start / ics.params.window_length
+            ex = self.width() * end / ics.params.window_length
             w = ex - sx - 1
             h = self.height() * val/256
 
@@ -47,7 +47,9 @@ class AACSpectrumScalefactorPlot(QtWidgets.QWidget):
 
             painter.fillRect(sx, self.height() - h, w, h, brush)
 
-            ms_used = (self.aac.block.cpe.ms_mask_present == 2 or self.aac.block.cpe.ms_used[0][sfb])
+            ms_used = (self.aac.block.cpe.ms_mask_present == 2 or 
+                       (self.aac.block.cpe.ms_mask_present == 1 and self.aac.block.cpe.ms_used[0][sfb]))
+
             if ms_used:
                 painter.setPen(ms_pen)
             else:
@@ -55,7 +57,7 @@ class AACSpectrumScalefactorPlot(QtWidgets.QWidget):
 
             for bin in range(start, end):
                 s = ics.spectral_data.spec[0][0][sfb][bin - start]
-                x = self.width() * bin / 512
+                x = self.width() * bin / ics.params.window_length
                 y = self.height() * (1 + s / 32) / 2
                 if prev:
                     (prev_x, prev_y) = prev
