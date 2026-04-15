@@ -11,9 +11,11 @@ class AACSpectrumPlot(QtWidgets.QWidget):
     def __init__(self):
         super(AACSpectrumPlot, self).__init__()
         self.spectrum_data = []
+        self.ics = None
 
-    def set_spectrum(self, spectrum_data):
+    def set_spectrum(self, spectrum_data, ics):
         self.spectrum_data = spectrum_data
+        self.ics = ics
         self.update()
 
     def paintEvent(self, event):
@@ -51,9 +53,21 @@ class AACSpectrumPlot(QtWidgets.QWidget):
                 w = self.width() * math.log(x * i, 10) / 3
                 painter.drawLine(w, 0, w, self.height())
 
+        brush = QtGui.QBrush(QtGui.QColor(192, 192, 192))
+        for sfb in range(self.ics.ics_info.max_sfb):
+            start = self.ics.params.swb_offset[sfb]
+            end = self.ics.params.swb_offset[sfb+1]
+            val = self.ics.scale_factor_data.sf[0][sfb]
+
+            sx = self.width() * math.log(1 + start, 10) / 3
+            ex = self.width() * math.log(1 + end, 10) / 3
+            w = ex - sx - 1
+            h = self.height() * val/256
+            painter.fillRect(sx, self.height() - h, w, h, brush)
+
         prev = None
         num = len(self.spectrum_data[0][0])
-        pen = QtGui.QPen(QtGui.QBrush(QtGui.QColor(128, 176, 224)), 3)
+        pen = QtGui.QPen(QtGui.QBrush(QtGui.QColor(128, 176, 224)), 1)
         painter.setPen(pen)
         for i in range(num):
             x = self.width() * math.log(1 + i, 10) / 3
@@ -81,9 +95,9 @@ class AACSpectrumView(QtWidgets.QScrollArea):
         self.widget.setMinimumSize(500, 500)
         self.setWidget(self.widget)
 
-    def set_spectrum(self, spectrum_data):
+    def set_spectrum(self, spectrum_data, ics):
         for i in range(2):
-            self.spectrum_plots[i].set_spectrum(spectrum_data[i])
+            self.spectrum_plots[i].set_spectrum(spectrum_data[i], ics[i])
 
     def resizeEvent(self, event):
         self.widget.setFixedSize(event.size().width(), event.size().width())
@@ -124,7 +138,7 @@ class AACStreamView(QtWidgets.QWidget):
         self.syntax_view.update_syntax(self.file.bytestream, self.aac.syntax_items())
         self.syntax_view.set_highlight(location, len(bytes))
 
-        self.spectrum_view.set_spectrum(self.aac.spec)
+        self.spectrum_view.set_spectrum(self.aac.spec, self.aac.block.cpe.ics)
 
 class Analyzer:
     def __init__(self, stream):
