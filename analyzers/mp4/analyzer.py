@@ -1,4 +1,4 @@
-import io
+import math
 
 from .file import File
 from .aac import AAC
@@ -20,10 +20,46 @@ class AACSpectrumPlot(QtWidgets.QWidget):
         painter = QtGui.QPainter(self)
         painter.drawRect(0, 0, self.width() - 1, self.height() - 1)
 
+        pen_major = QtGui.QPen(QtGui.QBrush(QtGui.QColor(0, 0, 0)), 1)
+        pen_minor = QtGui.QPen(QtGui.QBrush(QtGui.QColor(192, 192, 192)), 1)
+        
+        pen_center = QtGui.QPen(QtGui.QBrush(QtGui.QColor(0, 0, 0)), 2)
+        painter.setPen(pen_center)
+        painter.drawLine(0, self.height() / 2, self.width(), self.height() / 2)
+        for p in range(7):
+            painter.setPen(pen_major)
+            h = self.height() * p / 14
+            h2 = self.height() / 2
+            painter.drawLine(0, h2 + h, self.width(), h2 + h)
+            painter.drawLine(0, h2 - h, self.width(), h2 - h)
+
+            painter.setPen(pen_minor)
+            x = 10 ** p
+            for i in range(2, 10, 2):
+                h = self.height() * math.log(x * i, 10) / 14
+                painter.drawLine(0, h2 + h, self.width(), h2 + h)
+                painter.drawLine(0, h2 - h, self.width(), h2 - h)
+
+        for p in range(3):
+            painter.setPen(pen_major)
+            w = self.width() * p / 3
+            painter.drawLine(w, 0, w, self.height())
+
+            painter.setPen(pen_minor)
+            x = 10 ** p
+            for i in range(2, 10):
+                w = self.width() * math.log(x * i, 10) / 3
+                painter.drawLine(w, 0, w, self.height())
+
         prev = None
         num = len(self.spectrum_data[0][0])
+        pen = QtGui.QPen(QtGui.QBrush(QtGui.QColor(128, 176, 224)), 3)
+        painter.setPen(pen)
         for i in range(num):
-            (x, y) = (self.width() * i / num, self.height() / 2 + self.height() * self.spectrum_data[0][0][i] / (65536 * 2 * 3.14))
+            x = self.width() * math.log(1 + i, 10) / 3
+            s = self.spectrum_data[0][0][i]
+            sign = 1 if s > 0 else -1
+            y = self.height() * (1 - sign * math.log(1 + abs(s), 10) / 7) / 2
             if prev:
                 (prev_x, prev_y) = prev
                 painter.drawLine(prev_x, prev_y, x, y)
