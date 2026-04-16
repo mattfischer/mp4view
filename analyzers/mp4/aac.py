@@ -484,7 +484,7 @@ class AAC:
             else:
                 break
         val = self.bitstream.getbits(n+4)
-        return (2 << (n+4)) + val
+        return (1 << (n+4)) + val
 
     def process(self):
         x_quant = [None] * len(self.block.cpe.ics)

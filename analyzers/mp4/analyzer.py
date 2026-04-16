@@ -33,12 +33,12 @@ class AACSpectrumScalefactorPlot(QtWidgets.QWidget):
         for sfb in range(ics.ics_info.max_sfb):
             start = ics.params.swb_offset[sfb]
             end = ics.params.swb_offset[sfb+1]
-            val = ics.scale_factor_data.sf[0][sfb]
+            val = ics.scale_factor_data.sf[0][sfb] - 100
 
             sx = self.width() * start / ics.params.window_length
             ex = self.width() * end / ics.params.window_length
             w = ex - sx - 1
-            h = self.height() * val/256
+            h = self.height() * val/128
 
             if ics.section_data.sfb_cb[0][sfb] in (INTENSITY_HCB, INTENSITY_HCB2):
                 brush = intensity_brush
