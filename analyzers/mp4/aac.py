@@ -228,7 +228,7 @@ class AAC:
                 params.swb_offset[i] = swb_offset_short_window[fs_index][i]
             for i in range(params.num_windows - 1):
                 bit_set = (1 << (6 - i)) & ics_info.scale_factor_grouping
-                if bit_set:
+                if bit_set == 0:
                     params.num_window_groups += 1
                     params.window_group_length.append(1)
                 else:
@@ -420,7 +420,7 @@ class AAC:
     def tns_data(self, params):
         self.bitstream.start_syntax_item('tns_data')
         tns = Object()
-        if params.window_length == 128:
+        if params.window_length == 256:
             n_filt_len = 1
             length_len = 4
             order_len = 3
