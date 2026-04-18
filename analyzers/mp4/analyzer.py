@@ -29,40 +29,52 @@ class AACSpectrumScalefactorPlot(QtWidgets.QWidget):
         
         ms_pen = QtGui.QPen(QtGui.QBrush(QtGui.QColor(128, 176, 224)), 2)
         lr_pen = QtGui.QPen(QtGui.QBrush(QtGui.QColor(128, 224, 176)), 2)
-    
-        for sfb in range(ics.ics_info.max_sfb):
-            start = ics.params.swb_offset[sfb]
-            end = ics.params.swb_offset[sfb+1]
-            val = ics.scale_factor_data.sf[0][sfb] - 100
 
-            sx = self.width() * start / ics.params.window_length
-            ex = self.width() * end / ics.params.window_length
-            w = ex - sx - 1
-            h = self.height() * val/128
+        window_pen = QtGui.QPen(QtGui.QBrush(QtGui.QColor(128, 128, 128)), 8)
 
-            if ics.section_data.sfb_cb[0][sfb] in (INTENSITY_HCB, INTENSITY_HCB2):
-                brush = intensity_brush
-            else:
-                brush = regular_brush
+        win_idx = 0
+        for g in range(ics.params.num_window_groups):
+            for win in range(ics.params.window_group_length[g]):
+                for sfb in range(ics.ics_info.max_sfb):
+                    start = ics.params.swb_offset[sfb]
+                    end = ics.params.swb_offset[sfb+1]
+                    val = ics.scale_factor_data.sf[g][sfb] - 100
 
-            painter.fillRect(sx, self.height() - h, w, h, brush)
+                    sx = self.width() * (win_idx + start / ics.params.window_length) / ics.params.num_windows
+                    ex = self.width() * (win_idx + end / ics.params.window_length) / ics.params.num_windows
+                    w = ex - sx - 1
+                    h = self.height() * val/128
 
-            ms_used = (self.aac.block.cpe.ms_mask_present == 2 or 
-                       (self.aac.block.cpe.ms_mask_present == 1 and self.aac.block.cpe.ms_used[0][sfb]))
+                    if ics.section_data.sfb_cb[g][sfb] in (INTENSITY_HCB, INTENSITY_HCB2):
+                        brush = intensity_brush
+                    else:
+                        brush = regular_brush
 
-            if ms_used:
-                painter.setPen(ms_pen)
-            else:
-                painter.setPen(lr_pen)
+                    painter.fillRect(sx, self.height() - h, w, h, brush)
 
-            for bin in range(start, end):
-                s = ics.spectral_data.spec[0][0][sfb][bin - start]
-                x = self.width() * bin / ics.params.window_length
-                y = self.height() * (1 + s / 32) / 2
-                if prev:
-                    (prev_x, prev_y) = prev
-                    painter.drawLine(prev_x, prev_y, x, y)
-                prev = (x, y)
+                    ms_used = (self.aac.block.cpe.ms_mask_present == 2 or 
+                            (self.aac.block.cpe.ms_mask_present == 1 and self.aac.block.cpe.ms_used[g][sfb]))
+
+                    if ms_used:
+                        painter.setPen(ms_pen)
+                    else:
+                        painter.setPen(lr_pen)
+
+                    for bin in range(start, end):
+                        s = ics.spectral_data.spec[g][win][sfb][bin - start]
+                        x = self.width() * (win_idx + bin / ics.params.window_length) / ics.params.num_windows
+                        y = self.height() * (1 + s / 32) / 2
+                        if prev:
+                            (prev_x, prev_y) = prev
+                            painter.drawLine(prev_x, prev_y, x, y)
+                        prev = (x, y)
+
+                prev = None
+                win_idx += 1
+                if win_idx < ics.params.num_windows:
+                    painter.setPen(window_pen)
+                    x = self.width() * win_idx / ics.params.num_windows
+                    painter.drawLine(x, 0, x, self.height())
 
         painter.end()
 

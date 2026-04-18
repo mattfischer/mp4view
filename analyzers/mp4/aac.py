@@ -197,14 +197,14 @@ class AAC:
             num_swb_short_window = aac_tables.num_swb_short_window_256
             swb_offset_short_window = aac_tables.swb_offset_short_window_256
             long_window_length = 1024
-            short_window_length = 256
+            short_window_length = 128
         else:
             num_swb_long_window = aac_tables.num_swb_long_window_1920
             swb_offset_long_window = aac_tables.swb_offset_long_window_1920
             num_swb_short_window = aac_tables.num_swb_short_window_240
             swb_offset_short_window = aac_tables.swb_offset_short_window_240
             long_window_length = 960
-            short_window_length = 240
+            short_window_length = 120
 
         if ics_info.window_sequence in (ONLY_LONG_SEQUENCE, LONG_START_SEQUENCE, LONG_STOP_SEQUENCE):
             params.num_windows = 1
@@ -420,7 +420,7 @@ class AAC:
     def tns_data(self, params):
         self.bitstream.start_syntax_item('tns_data')
         tns = Object()
-        if params.window_length == 256:
+        if params.window_length == 128:
             n_filt_len = 1
             length_len = 4
             order_len = 3
