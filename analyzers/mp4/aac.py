@@ -512,28 +512,28 @@ class AAC:
                     else:
                         x_quant[i][0][0][sfb][bin] -= pulse_data.pulse_amp[j]
 
-        x_invquant = [None] * len(self.block.cpe.ics)
-        x_rescal = [None] * len(self.block.cpe.ics)
+        self.x_invquant = [None] * len(self.block.cpe.ics)
+        self.x_rescal = [None] * len(self.block.cpe.ics)
         for (i, ics) in enumerate(self.block.cpe.ics):
-            x_invquant[i] = [None] * ics.params.num_window_groups
-            x_rescal[i] = [None] * ics.params.num_window_groups
+            self.x_invquant[i] = [None] * ics.params.num_window_groups
+            self.x_rescal[i] = [None] * ics.params.num_window_groups
             for g in range(ics.params.num_window_groups):
-                x_invquant[i][g] = [None] * ics.params.window_group_length[g]
-                x_rescal[i][g] = [None] * ics.params.window_group_length[g]
+                self.x_invquant[i][g] = [None] * ics.params.window_group_length[g]
+                self.x_rescal[i][g] = [None] * ics.params.window_group_length[g]
                 for w in range(ics.params.window_group_length[g]):
-                    x_invquant[i][g][w] = [None] * ics.ics_info.max_sfb
-                    x_rescal[i][g][w] = [None] * ics.ics_info.max_sfb
+                    self.x_invquant[i][g][w] = [None] * ics.ics_info.max_sfb
+                    self.x_rescal[i][g][w] = [None] * ics.ics_info.max_sfb
                     for sfb in range(ics.ics_info.max_sfb):
                         num_bins = ics.params.swb_offset[sfb+1] - ics.params.swb_offset[sfb]
-                        x_invquant[i][g][w][sfb] = [0] * num_bins
-                        x_rescal[i][g][w][sfb] = [0] * num_bins
+                        self.x_invquant[i][g][w][sfb] = [0] * num_bins
+                        self.x_rescal[i][g][w][sfb] = [0] * num_bins
                         gain = 2.0 ** (0.25 * (ics.scale_factor_data.sf[g][sfb] - 100))
                         for b in range(num_bins):
                             x = x_quant[i][g][w][sfb][b]
-                            x_invquant[i][g][w][sfb][b] = math.copysign(abs(float(x)) ** (4/3), x) 
-                            x_rescal[i][g][w][sfb][b] = gain * x_invquant[i][g][w][sfb][b]
-        l_spec = x_rescal[0]
-        r_spec = x_rescal[1]
+                            self.x_invquant[i][g][w][sfb][b] = math.copysign(abs(float(x)) ** (4/3), x) 
+                            self.x_rescal[i][g][w][sfb][b] = gain * self.x_invquant[i][g][w][sfb][b]
+        l_spec = self.x_rescal[0]
+        r_spec = self.x_rescal[1]
 
         if self.block.cpe.ms_mask_present >= 1:
             params = self.block.cpe.params
