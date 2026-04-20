@@ -7,6 +7,9 @@ from syntax import SyntaxView
 
 from PySide2 import QtWidgets, QtGui
 
+import numpy as np
+import scipy.fft
+
 class AACSpectrumScalefactorPlot(QtWidgets.QWidget):
     def __init__(self, channel):
         super(AACSpectrumScalefactorPlot, self).__init__()
@@ -235,6 +238,58 @@ class AACSpectrumPlot(QtWidgets.QWidget):
 
         painter.end()
 
+class AACSamplesPlot(QtWidgets.QWidget):
+    def __init__(self, channel):
+        super(AACSamplesPlot, self).__init__()
+        self.channel = channel
+        self.aac = None
+
+    def set_aac(self, aac):
+        self.aac = aac
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QtGui.QPainter(self)
+        painter.drawRect(0, 0, self.width() - 1, self.height() - 1)
+
+        ics = self.aac.block.cpe.ics[self.channel]
+      
+        pen_center = QtGui.QPen(QtGui.QBrush(QtGui.QColor(0, 0, 0)), 2)
+        painter.setPen(pen_center)
+        painter.drawLine(0, self.height() / 2, self.width(), self.height() / 2)
+
+        window_pen = QtGui.QPen(QtGui.QBrush(QtGui.QColor(128, 128, 128)), 8)
+
+        prev = None
+        win_idx = 0
+        pen = QtGui.QPen(QtGui.QBrush(QtGui.QColor(128, 176, 224)), 1)
+        for g in range(ics.params.num_window_groups):
+            for win in range(ics.params.window_group_length[g]):
+                spectrum = self.aac.spec[self.channel][g][win]
+                idct = scipy.fft.idct(spectrum, type=4)
+                samples = np.concatenate([idct, np.flip(idct) * -1])
+                n = ics.params.window_length
+                samples = np.concatenate([samples[n//2:n*2], samples[0:n//2] * -1])
+
+                painter.setPen(pen)
+                for i in range(ics.params.window_length * 2):
+                    s = samples[i]
+                    x = self.width() * (win_idx + i / (ics.params.window_length * 2)) / ics.params.num_windows
+                    y = self.height() * (1 - s / 32767) / 2
+                    if prev:
+                        (prev_x, prev_y) = prev
+                        painter.drawLine(prev_x, prev_y, x, y)
+                    prev = (x, y)
+
+                prev = None
+                win_idx += 1
+                if win_idx < ics.params.num_windows:
+                    painter.setPen(window_pen)
+                    x = self.width() * win_idx / ics.params.num_windows
+                    painter.drawLine(x, 0, x, self.height())
+
+        painter.end()
+
 class AACPerChannelView(QtWidgets.QScrollArea):
     def __init__(self, cls):
         super(AACPerChannelView, self).__init__()
@@ -282,6 +337,8 @@ class AACStreamView(QtWidgets.QWidget):
         tabs.addTab(self.rescaled_spectrum_view, 'Rescaled Spectrum')
         self.spectrum_view = AACPerChannelView(AACSpectrumPlot)
         tabs.addTab(self.spectrum_view, 'Spectrum')
+        self.samples_view = AACPerChannelView(AACSamplesPlot)
+        tabs.addTab(self.samples_view, 'Samples')
 
         vlayout.addWidget(tabs)
 
@@ -300,6 +357,7 @@ class AACStreamView(QtWidgets.QWidget):
         self.spec_sf_view.set_aac(self.aac)
         self.rescaled_spectrum_view.set_aac(self.aac)
         self.spectrum_view.set_aac(self.aac)
+        self.samples_view.set_aac(self.aac)
 
 class Analyzer:
     def __init__(self, stream):
