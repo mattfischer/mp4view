@@ -3,6 +3,9 @@ from . import aac_tables
 import math
 from syntax import format_enum
 
+import numpy as np
+import scipy.fft
+
 ID_SCE = 0x0
 ID_CPE = 0x1
 ID_CCE = 0x2
@@ -577,4 +580,22 @@ class AAC:
                         for b in range(num_bins):
                             flat[i][g][w][params.swb_offset[sfb]+b] = spec[g][w][sfb][b]
         self.spec = flat
-            
+
+        samples = [None] * 2
+        for i in range(2):
+            params = self.block.cpe.ics[i].params
+            ics_info = self.block.cpe.ics[i].ics_info
+            samples[i] = [None] * params.num_window_groups
+            for g in range(params.num_window_groups):
+                samples[i][g] = [None] * params.window_group_length[g]
+                for w in range(params.window_group_length[g]):
+                    spectrum = self.spec[i][g][w]
+                    if len(spectrum) == 0:
+                        continue
+
+                    idct = scipy.fft.idct(spectrum, type=4)
+                    s = np.concatenate([idct, np.flip(idct) * -1])
+                    n = ics.params.window_length
+                    s = np.concatenate([s[n//2:n*2], s[0:n//2] * -1])
+                    samples[i][g][w] = s
+        self.samples = samples

@@ -2,13 +2,11 @@ import math
 
 from .file import File
 from .aac import AAC, INTENSITY_HCB, INTENSITY_HCB2
+from .aac import ONLY_LONG_SEQUENCE, LONG_START_SEQUENCE, EIGHT_SHORT_SEQUENCE, LONG_STOP_SEQUENCE
 
 from syntax import SyntaxView
 
 from PySide2 import QtWidgets, QtGui
-
-import numpy as np
-import scipy.fft
 
 class AACSpectrumScalefactorPlot(QtWidgets.QWidget):
     def __init__(self, channel):
@@ -258,18 +256,16 @@ class AACSamplesPlot(QtWidgets.QWidget):
         painter.setPen(pen_center)
         painter.drawLine(0, self.height() / 2, self.width(), self.height() / 2)
 
-        window_pen = QtGui.QPen(QtGui.QBrush(QtGui.QColor(128, 128, 128)), 8)
+        border_pen = QtGui.QPen(QtGui.QBrush(QtGui.QColor(128, 128, 128)), 8)
 
         prev = None
         win_idx = 0
-        pen = QtGui.QPen(QtGui.QBrush(QtGui.QColor(128, 176, 224)), 1)
+        pen = QtGui.QPen(QtGui.QBrush(QtGui.QColor(128, 176, 224)), 2)
         for g in range(ics.params.num_window_groups):
             for win in range(ics.params.window_group_length[g]):
-                spectrum = self.aac.spec[self.channel][g][win]
-                idct = scipy.fft.idct(spectrum, type=4)
-                samples = np.concatenate([idct, np.flip(idct) * -1])
-                n = ics.params.window_length
-                samples = np.concatenate([samples[n//2:n*2], samples[0:n//2] * -1])
+                samples = self.aac.samples[self.channel][g][win]
+                if samples is None:
+                    continue
 
                 painter.setPen(pen)
                 for i in range(ics.params.window_length * 2):
@@ -284,9 +280,48 @@ class AACSamplesPlot(QtWidgets.QWidget):
                 prev = None
                 win_idx += 1
                 if win_idx < ics.params.num_windows:
-                    painter.setPen(window_pen)
+                    painter.setPen(border_pen)
                     x = self.width() * win_idx / ics.params.num_windows
                     painter.drawLine(x, 0, x, self.height())
+
+        window_pen = QtGui.QPen(QtGui.QBrush(QtGui.QColor(128, 128, 128)), 1)
+        painter.setPen(window_pen)
+        prev = None
+
+        def sin_win(n, N):
+            return math.sin((math.pi / N) * (n + 1/2))
+
+        for i in range(0, self.width(), 10):
+            n = i * 2048 / self.width()
+            w = 0
+            if ics.ics_info.window_sequence == ONLY_LONG_SEQUENCE:
+                w = sin_win(n, 2048)
+            elif ics.ics_info.window_sequence == LONG_START_SEQUENCE:
+                if n < 1024:
+                    w = sin_win(n, 2048)
+                elif n < 1472:
+                    w = 1
+                elif n < 1600:
+                    w = sin_win(n + 128 - 1472, 256)
+            elif ics.ics_info.window_sequence == EIGHT_SHORT_SEQUENCE:
+                n = n % 256
+                w = sin_win(n, 256)
+            elif ics.ics_info.window_sequence == LONG_STOP_SEQUENCE:
+                if n < 448:
+                    w = 0
+                elif n <= 576:
+                    w = sin_win(n - 448, 256)
+                elif n < 1024:
+                    w = 1
+                else:
+                    w = sin_win(n, 2048)
+
+            x = i
+            y = self.height() * (1 - w)
+            if prev:
+                (prev_x, prev_y) = prev
+                painter.drawLine(prev_x, prev_y, x, y)
+            prev = (x, y)
 
         painter.end()
 
