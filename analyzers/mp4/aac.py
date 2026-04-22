@@ -588,8 +588,7 @@ class AAC:
             win_idx = 0
             params = self.block.cpe.ics[i].params
             ics_info = self.block.cpe.ics[i].ics_info
-            window_values = [self.window(ics_info.window_shape, ics_info.window_sequence, n) for n in range(params.window_length * 2)]
-
+ 
             samples[i] = [None] * params.num_window_groups
             windowed_samples[i] = [0] * 2048
             for g in range(params.num_window_groups):
