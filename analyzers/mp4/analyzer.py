@@ -236,9 +236,9 @@ class AACSpectrumPlot(QtWidgets.QWidget):
 
         painter.end()
 
-class AACSamplesPlot(QtWidgets.QWidget):
+class AACRawSamplesPlot(QtWidgets.QWidget):
     def __init__(self, channel):
-        super(AACSamplesPlot, self).__init__()
+        super(AACRawSamplesPlot, self).__init__()
         self.channel = channel
         self.aac = None
 
@@ -301,6 +301,48 @@ class AACSamplesPlot(QtWidgets.QWidget):
 
         painter.end()
 
+class AACFinalSamplesPlot(QtWidgets.QWidget):
+    def __init__(self, channel):
+        super(AACFinalSamplesPlot, self).__init__()
+        self.channel = channel
+        self.aac = None
+        self.prev_aac = None
+
+    def set_aac(self, aac):
+        (self.aac, self.prev_aac) = aac
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QtGui.QPainter(self)
+        painter.drawRect(0, 0, self.width() - 1, self.height() - 1)
+
+        ics = self.aac.block.cpe.ics[self.channel]
+      
+        pen_center = QtGui.QPen(QtGui.QBrush(QtGui.QColor(0, 0, 0)), 2)
+        painter.setPen(pen_center)
+        painter.drawLine(0, self.height() / 2, self.width(), self.height() / 2)
+
+        prev = None
+        pen = QtGui.QPen(QtGui.QBrush(QtGui.QColor(128, 176, 224)), 2)
+        samples = self.aac.windowed_samples[self.channel]
+        if self.prev_aac:
+            prev_samples = self.prev_aac.windowed_samples[self.channel]
+        else:
+            prev_samples = [0] * 2048
+
+        if samples is not None:
+            painter.setPen(pen)
+            for i in range(1024):
+                s = samples[i] + prev_samples[1024 + i]
+                x = self.width() * i / 1024
+                y = self.height() * (1 - s / 32767) / 2
+                if prev:
+                    (prev_x, prev_y) = prev
+                    painter.drawLine(prev_x, prev_y, x, y)
+                prev = (x, y)
+
+        painter.end()
+
 class AACPerChannelView(QtWidgets.QScrollArea):
     def __init__(self, cls):
         super(AACPerChannelView, self).__init__()
@@ -348,8 +390,10 @@ class AACStreamView(QtWidgets.QWidget):
         tabs.addTab(self.rescaled_spectrum_view, 'Rescaled Spectrum')
         self.spectrum_view = AACPerChannelView(AACSpectrumPlot)
         tabs.addTab(self.spectrum_view, 'Spectrum')
-        self.samples_view = AACPerChannelView(AACSamplesPlot)
-        tabs.addTab(self.samples_view, 'Samples')
+        self.raw_samples_view = AACPerChannelView(AACRawSamplesPlot)
+        tabs.addTab(self.raw_samples_view, 'Raw Samples')
+        self.final_samples_view = AACPerChannelView(AACFinalSamplesPlot)
+        tabs.addTab(self.final_samples_view, 'Final Samples')
 
         vlayout.addWidget(tabs)
 
@@ -362,13 +406,21 @@ class AACStreamView(QtWidgets.QWidget):
         self.aac = AAC()
         self.aac.parse(bytes, location, self.file.es_descriptor())
 
+        if value > 0:
+            (bytes, location) = self.file.getsample(value - 1)
+            self.prev_aac = AAC()
+            self.prev_aac.parse(bytes, location, self.file.es_descriptor())
+        else:
+            self.prev_aac = None
+
         self.syntax_view.update_syntax(self.file.bytestream, self.aac.syntax_items())
         self.syntax_view.set_highlight(location, len(bytes))
 
         self.spec_sf_view.set_aac(self.aac)
         self.rescaled_spectrum_view.set_aac(self.aac)
         self.spectrum_view.set_aac(self.aac)
-        self.samples_view.set_aac(self.aac)
+        self.raw_samples_view.set_aac(self.aac)
+        self.final_samples_view.set_aac((self.aac, self.prev_aac))
 
 class Analyzer:
     def __init__(self, stream):
