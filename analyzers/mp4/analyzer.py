@@ -213,7 +213,7 @@ class AACSpectrumPlot(QtWidgets.QWidget):
 
         prev = None
         win_idx = 0
-        pen = QtGui.QPen(QtGui.QBrush(QtGui.QColor(128, 176, 224)), 1)
+        pen = QtGui.QPen(QtGui.QBrush(QtGui.QColor(128, 176, 224)), 2)
         for g in range(ics.params.num_window_groups):
             for win in range(ics.params.window_group_length[g]):
                 painter.setPen(pen)
