@@ -288,33 +288,9 @@ class AACSamplesPlot(QtWidgets.QWidget):
         painter.setPen(window_pen)
         prev = None
 
-        def sin_win(n, N):
-            return math.sin((math.pi / N) * (n + 1/2))
-
         for i in range(0, self.width(), 10):
-            n = i * 2048 / self.width()
-            w = 0
-            if ics.ics_info.window_sequence == ONLY_LONG_SEQUENCE:
-                w = sin_win(n, 2048)
-            elif ics.ics_info.window_sequence == LONG_START_SEQUENCE:
-                if n < 1024:
-                    w = sin_win(n, 2048)
-                elif n < 1472:
-                    w = 1
-                elif n < 1600:
-                    w = sin_win(n + 128 - 1472, 256)
-            elif ics.ics_info.window_sequence == EIGHT_SHORT_SEQUENCE:
-                n = n % 256
-                w = sin_win(n, 256)
-            elif ics.ics_info.window_sequence == LONG_STOP_SEQUENCE:
-                if n < 448:
-                    w = 0
-                elif n <= 576:
-                    w = sin_win(n - 448, 256)
-                elif n < 1024:
-                    w = 1
-                else:
-                    w = sin_win(n, 2048)
+            n = i * 2048 / self.width() % (ics.params.window_length * 2)
+            w = self.aac.window(ics.ics_info.window_shape, ics.ics_info.window_sequence, n)
 
             x = i
             y = self.height() * (1 - w)

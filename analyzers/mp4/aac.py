@@ -100,6 +100,7 @@ class Object:
     def print(self, prefix=''):
         for (name, entry) in self.__dict__.items():
             self.printitem(name, entry, prefix)
+
 class AAC:
     def parse(self, bytes, byte_start, es_descriptor):
         self.bitstream = stream.Bitstream(bytes, byte_start)
@@ -582,10 +583,15 @@ class AAC:
         self.spec = flat
 
         samples = [None] * 2
+        windowed_samples = [None] * 2
+        win_idx = 0
         for i in range(2):
             params = self.block.cpe.ics[i].params
             ics_info = self.block.cpe.ics[i].ics_info
+            window_values = [self.window(ics_info.window_shape, ics_info.window_sequence, n) for n in range(params.window_length * 2)]
+
             samples[i] = [None] * params.num_window_groups
+            windowed_samples[i] = [0] * 2048
             for g in range(params.num_window_groups):
                 samples[i][g] = [None] * params.window_group_length[g]
                 for w in range(params.window_group_length[g]):
@@ -598,4 +604,43 @@ class AAC:
                     n = ics.params.window_length
                     s = np.concatenate([s[n//2:n*2], s[0:n//2] * -1])
                     samples[i][g][w] = s
+                    start = 0
+                    if ics_info.window_sequence == EIGHT_SHORT_SEQUENCE:
+                        start = 448 + win_idx * 128
+                    else:
+                        start = 0
+                    for n in range(params.window_length * 2):
+                        windowed_samples[i][start + n] += s[n] * self.window(ics_info.window_shape, ics_info.window_sequence, n)
+
+                    win_idx += 1
+
         self.samples = samples
+        self.windowed_samples = windowed_samples
+
+    def window(self, window_shape, window_sequence, n):
+        def sin_win(n, N):
+            return math.sin((math.pi / N) * (n + 1/2))
+
+        if window_sequence == ONLY_LONG_SEQUENCE:
+            w = sin_win(n, 2048)
+        elif window_sequence == LONG_START_SEQUENCE:
+            if n < 1024:
+                w = sin_win(n, 2048)
+            elif n < 1472:
+                w = 1
+            elif n < 1600:
+                w = sin_win(n + 128 - 1472, 256)
+            else:
+                w = 0
+        elif window_sequence == EIGHT_SHORT_SEQUENCE:
+            w = sin_win(n, 256)
+        elif window_sequence == LONG_STOP_SEQUENCE:
+            if n < 448:
+                w = 0
+            elif n <= 576:
+                w = sin_win(n - 448, 256)
+            elif n < 1024:
+                w = 1
+            else:
+                w = sin_win(n, 2048)
+        return w
