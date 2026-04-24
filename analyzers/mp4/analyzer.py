@@ -236,6 +236,96 @@ class AACSpectrumPlot(QtWidgets.QWidget):
 
         painter.end()
 
+class AACTnsSpectrumPlot(QtWidgets.QWidget):
+    def __init__(self, channel):
+        super(AACTnsSpectrumPlot, self).__init__()
+        self.channel = channel
+        self.aac = None
+
+    def set_aac(self, aac):
+        self.aac = aac
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QtGui.QPainter(self)
+        painter.drawRect(0, 0, self.width() - 1, self.height() - 1)
+
+        ics = self.aac.parsed_block.cpe.ics[self.channel]
+
+        if hasattr(ics, 'tns_data'):
+            tns_brush = QtGui.QBrush(QtGui.QColor(192, 192, 192))
+            win_idx = 0
+            for g in range(ics.params.num_window_groups):
+                for win in range(ics.params.window_group_length[g]):        
+                    bottom = ics.ics_info.max_sfb
+                    for f in range(ics.tns_data.n_filt[win_idx]):
+                        top = bottom
+                        bottom = max(top - ics.tns_data.length[win_idx][f], 0)
+                        tns_order = ics.tns_data.order[win_idx][f]
+                        if tns_order > 0:
+                            sfb_start = ics.params.swb_offset[bottom]
+                            sfb_end = ics.params.swb_offset[top]
+                            sx = self.width() * (win_idx + sfb_start / ics.params.window_length) / ics.params.num_windows
+                            ex = self.width() * (win_idx + sfb_end / ics.params.window_length) / ics.params.num_windows
+                            painter.fillRect(sx, 0, ex - sx, self.height(), tns_brush)
+                    win_idx += 1
+
+        pen_major = QtGui.QPen(QtGui.QBrush(QtGui.QColor(0, 0, 0)), 1)
+        pen_minor = QtGui.QPen(QtGui.QBrush(QtGui.QColor(192, 192, 192)), 1)
+        
+        pen_center = QtGui.QPen(QtGui.QBrush(QtGui.QColor(0, 0, 0)), 2)
+        painter.setPen(pen_center)
+        painter.drawLine(0, self.height() / 2, self.width(), self.height() / 2)
+        for p in range(7):
+            painter.setPen(pen_major)
+            h = self.height() * p / 14
+            h2 = self.height() / 2
+            painter.drawLine(0, h2 + h, self.width(), h2 + h)
+            painter.drawLine(0, h2 - h, self.width(), h2 - h)
+
+            painter.setPen(pen_minor)
+            x = 10 ** p
+            for i in range(2, 10, 2):
+                h = self.height() * math.log(x * i, 10) / 14
+                painter.drawLine(0, h2 + h, self.width(), h2 + h)
+                painter.drawLine(0, h2 - h, self.width(), h2 - h)
+
+        for i in range(0, 1024, 16):
+            if i % 64 == 0:
+                painter.setPen(pen_major)
+            else:
+                painter.setPen(pen_minor)
+
+            w = self.width() * i / 1024
+            painter.drawLine(w, 0, w, self.height())
+
+        window_pen = QtGui.QPen(QtGui.QBrush(QtGui.QColor(128, 128, 128)), 8)
+
+        prev = None
+        win_idx = 0
+        pen = QtGui.QPen(QtGui.QBrush(QtGui.QColor(128, 176, 224)), 2)
+        for g in range(ics.params.num_window_groups):
+            for win in range(ics.params.window_group_length[g]):
+                painter.setPen(pen)
+                for i in range(ics.params.window_length):
+                    s = self.aac.tns_spec[self.channel][g][win][i]
+                    x = self.width() * (win_idx + i / ics.params.window_length) / ics.params.num_windows
+                    sign = 1 if s > 0 else -1
+                    y = self.height() * (1 - sign * math.log(1 + abs(s), 10) / 7) / 2
+                    if prev:
+                        (prev_x, prev_y) = prev
+                        painter.drawLine(prev_x, prev_y, x, y)
+                    prev = (x, y)
+
+                prev = None
+                win_idx += 1
+                if win_idx < ics.params.num_windows:
+                    painter.setPen(window_pen)
+                    x = self.width() * win_idx / ics.params.num_windows
+                    painter.drawLine(x, 0, x, self.height())
+
+        painter.end()
+
 class AACRawSamplesPlot(QtWidgets.QWidget):
     def __init__(self, channel):
         super(AACRawSamplesPlot, self).__init__()
@@ -390,6 +480,8 @@ class AACStreamView(QtWidgets.QWidget):
         tabs.addTab(self.rescaled_spectrum_view, 'Rescaled Spectrum')
         self.spectrum_view = AACPerChannelView(AACSpectrumPlot)
         tabs.addTab(self.spectrum_view, 'Spectrum')
+        self.tns_spectrum_view = AACPerChannelView(AACTnsSpectrumPlot)
+        tabs.addTab(self.tns_spectrum_view, 'TNS Spectrum')
         self.raw_samples_view = AACPerChannelView(AACRawSamplesPlot)
         tabs.addTab(self.raw_samples_view, 'Raw Samples')
         self.final_samples_view = AACPerChannelView(AACFinalSamplesPlot)
@@ -419,6 +511,7 @@ class AACStreamView(QtWidgets.QWidget):
         self.spec_sf_view.set_aac(self.aac)
         self.rescaled_spectrum_view.set_aac(self.aac)
         self.spectrum_view.set_aac(self.aac)
+        self.tns_spectrum_view.set_aac(self.aac)
         self.raw_samples_view.set_aac(self.aac)
         self.final_samples_view.set_aac((self.aac, self.prev_aac))
 

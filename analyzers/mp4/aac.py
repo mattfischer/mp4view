@@ -474,8 +474,9 @@ class AAC:
         self.x_invquant = self.process_quantization(ics_list, self.x_quant)
         self.x_rescal = self.process_scalefactors(ics_list, self.x_invquant)
         spec = self.process_joint_stereo(parsed_block.cpe, self.x_rescal)
-        self.spec = self.process_spectrum(ics_list, spec)
-        self.samples = self.process_filterbank(ics_list, self.spec)
+        self.spec = self.flatten_spectrum(ics_list, spec)
+        self.tns_spec = self.process_tns(ics_list, self.spec)
+        self.samples = self.process_filterbank(ics_list, self.tns_spec)
         self.windowed_samples = self.process_window(ics_list, self.samples)
 
     def process_noiseless_coding(self, ics_list):
@@ -568,7 +569,7 @@ class AAC:
                             r_spec[g][w][sfb][b] = scale * l_spec[g][w][sfb][b]
         return (l_spec, r_spec)
 
-    def process_spectrum(self, ics_list, spec):
+    def flatten_spectrum(self, ics_list, spec):
         flat = [None] * 2
         for i in range(2):
             params = ics_list[i].params
@@ -585,6 +586,91 @@ class AAC:
         spec = flat
 
         return spec
+
+    def process_tns(self, ics_list, spec):
+        tns_spec = [None] * 2
+        for c in range(2):
+            if not hasattr(ics_list[c], 'tns_data'):
+                tns_spec[c] = spec[c]
+                continue
+
+            ics = ics_list[c]
+            params = ics.params
+            ics_info = ics.ics_info
+            tns_data = ics.tns_data
+            tns_spec[c] = [None] * params.num_window_groups
+            win_idx = 0
+            for g in range(params.num_window_groups):
+                tns_spec[c][g] = [None] * params.window_group_length[g]
+                for w in range(params.window_group_length[g]):
+                    tns_spec[c][g][w] = spec[c][g][w].copy()
+                    bottom = ics_info.max_sfb
+                    for f in range(tns_data.n_filt[win_idx]):
+                        top = bottom
+                        bottom = max(top - tns_data.length[win_idx][f], 0)
+                        tns_order = tns_data.order[win_idx][f]
+                        if tns_order == 0:
+                            continue
+
+                        coef_res_bits = tns_data.coef_res[win_idx] + 3
+                        coef_compress = tns_data.coef_compress[win_idx][f]
+                        coef = tns_data.coef[win_idx][f]
+
+                        sgn_mask = [ 0x2, 0x4, 0x8 ] 
+                        neg_mask = [ ~0x3, ~0x7, ~0xf ] 
+                        coef_res2 = coef_res_bits - coef_compress; 
+                        s_mask = sgn_mask[coef_res2 - 2] 
+                        n_mask = neg_mask[coef_res2 - 2]
+
+                        tmp = [0] * tns_order
+                        for i in range(tns_order):
+                            tmp[i] = (coef[i] | n_mask) if (coef[i] & s_mask) else coef[i]
+
+                        iqfac = ((1 << (coef_res_bits - 1)) - 0.5) / (math.pi / 2.0); 
+                        iqfac_m = ((1 << (coef_res_bits - 1)) + 0.5) / (math.pi / 2.0); 
+                        
+                        tmp2 = [0] * tns_order
+                        for i in range(tns_order): 
+                            tmp2[i] = math.sin(tmp[i] / (iqfac if tmp[i] >= 0 else iqfac_m))
+
+                        a = [0] * (tns_order + 1)
+                        b = [0] * tns_order
+
+                        a[0] = 1
+                        for m in range(1, tns_order + 1):
+                            for i in range(1, m):
+                                b[i] = a[i] + tmp2[m - 1] * a[m - i]
+                            for i in range(1, m):
+                                a[i] = b[i]
+                            a[m] = tmp2[m - 1]
+                        lpc = a
+
+                        start = params.swb_offset[bottom]
+                        end = params.swb_offset[top]
+
+                        if tns_data.direction[win_idx][f]:
+                            inc = -1
+                            (start, end) = (end - 1, start - 1)
+                        else:
+                            inc = 1
+                        
+                        n = start
+                        while n != end:
+                            t = tns_spec[c][g][w][n]
+                            for i in range(1, tns_order + 1):
+                                m = n - inc * i
+                                if (inc == 1 and m < start) or (inc == -1 and m > start):
+                                    s = 0
+                                else:
+                                    s = tns_spec[c][g][w][m]
+                                t -= lpc[i] * s
+                            tns_spec[c][g][w][n] = t
+
+                            n += inc
+
+                    win_idx += 1
+
+        return tns_spec
 
     def process_filterbank(self, ics_list, spec):
         samples = [None] * 2
