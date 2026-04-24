@@ -491,13 +491,23 @@ class AAC:
         return (1 << (n+4)) + val
 
     def process(self):
-        x_quant = [None] * len(self.block.cpe.ics)
-        for (i, ics) in enumerate(self.block.cpe.ics):
+        ics_list = self.block.cpe.ics
+        self.x_quant = self.process_noiseless_coding(ics_list)
+        self.x_invquant = self.process_quantization(ics_list, self.x_quant)
+        self.x_rescal = self.process_scalefactors(ics_list, self.x_invquant)
+        spec = self.process_joint_stereo(self.block.cpe, self.x_rescal)
+        self.spec = self.process_spectrum(ics_list, spec)
+        self.samples = self.process_filterbank(ics_list, self.spec)
+        self.windowed_samples = self.process_window(ics_list, self.samples)
+
+    def process_noiseless_coding(self, ics_list):
+        x_quant = [None] * len(ics_list)
+        for (i, ics) in enumerate(ics_list):
             x_quant[i] = [None] * ics.params.num_window_groups
             for g in range(ics.params.num_window_groups):
                 x_quant[i][g] = [None] * ics.params.window_group_length[g]
                 for w in range(ics.params.window_group_length[g]):
-                    x_quant[i][g][w] = [None] * ics.ics_info.max_sfb
+                    x_quant[i][g][w] = [0] * ics.params.window_length
                     for sfb in range(ics.ics_info.max_sfb):
                         x_quant[i][g][w][sfb] = ics.spectral_data.spec[g][w][sfb]
             
@@ -515,33 +525,46 @@ class AAC:
                         x_quant[i][0][0][sfb][bin] += pulse_data.pulse_amp[j]
                     else:
                         x_quant[i][0][0][sfb][bin] -= pulse_data.pulse_amp[j]
+        return x_quant
 
-        self.x_invquant = [None] * len(self.block.cpe.ics)
-        self.x_rescal = [None] * len(self.block.cpe.ics)
-        for (i, ics) in enumerate(self.block.cpe.ics):
-            self.x_invquant[i] = [None] * ics.params.num_window_groups
-            self.x_rescal[i] = [None] * ics.params.num_window_groups
+    def process_quantization(self, ics_list, x_quant):
+        x_invquant = [None] * len(ics_list)
+        for (i, ics) in enumerate(ics_list):
+            x_invquant[i] = [None] * ics.params.num_window_groups
             for g in range(ics.params.num_window_groups):
-                self.x_invquant[i][g] = [None] * ics.params.window_group_length[g]
-                self.x_rescal[i][g] = [None] * ics.params.window_group_length[g]
+                x_invquant[i][g] = [None] * ics.params.window_group_length[g]
                 for w in range(ics.params.window_group_length[g]):
-                    self.x_invquant[i][g][w] = [None] * ics.ics_info.max_sfb
-                    self.x_rescal[i][g][w] = [None] * ics.ics_info.max_sfb
+                    x_invquant[i][g][w] = [0] * ics.params.window_length
                     for sfb in range(ics.ics_info.max_sfb):
                         num_bins = ics.params.swb_offset[sfb+1] - ics.params.swb_offset[sfb]
-                        self.x_invquant[i][g][w][sfb] = [0] * num_bins
-                        self.x_rescal[i][g][w][sfb] = [0] * num_bins
-                        gain = 2.0 ** (0.25 * (ics.scale_factor_data.sf[g][sfb] - 100))
+                        x_invquant[i][g][w][sfb] = [0] * num_bins
                         for b in range(num_bins):
                             x = x_quant[i][g][w][sfb][b]
-                            self.x_invquant[i][g][w][sfb][b] = math.copysign(abs(float(x)) ** (4/3), x) 
-                            self.x_rescal[i][g][w][sfb][b] = gain * self.x_invquant[i][g][w][sfb][b]
-        l_spec = self.x_rescal[0]
-        r_spec = self.x_rescal[1]
+                            x_invquant[i][g][w][sfb][b] = math.copysign(abs(float(x)) ** (4/3), x) 
+        return x_invquant
 
-        if self.block.cpe.ms_mask_present >= 1:
-            params = self.block.cpe.params
-            ics_info = self.block.cpe.ics_info
+    def process_scalefactors(self, ics_list, x_invquant):
+        x_rescal = [None] * len(ics_list)
+        for (i, ics) in enumerate(ics_list):
+            x_rescal[i] = [None] * ics.params.num_window_groups
+            for g in range(ics.params.num_window_groups):
+                x_rescal[i][g] = [None] * ics.params.window_group_length[g]
+                for w in range(ics.params.window_group_length[g]):
+                    x_rescal[i][g][w] = [0] * ics.params.window_length
+                    for sfb in range(ics.ics_info.max_sfb):
+                        num_bins = ics.params.swb_offset[sfb+1] - ics.params.swb_offset[sfb]
+                        x_rescal[i][g][w][sfb] = [0] * num_bins
+                        gain = 2.0 ** (0.25 * (ics.scale_factor_data.sf[g][sfb] - 100))
+                        for b in range(num_bins):
+                            x_rescal[i][g][w][sfb][b] = gain * x_invquant[i][g][w][sfb][b]
+        return x_rescal
+
+    def process_joint_stereo(self, cpe, spec):
+        (l_spec, r_spec) = spec
+
+        if cpe.ms_mask_present >= 1:
+            params = cpe.params
+            ics_info = cpe.ics_info
             for g in range(params.num_window_groups):
                 for w in range(params.window_group_length[g]):
                     for sfb in range(ics_info.max_sfb):
@@ -552,69 +575,77 @@ class AAC:
                                 l_spec[g][w][sfb][b] = l_spec[g][w][sfb][b] + r_spec[g][w][sfb][b]
                                 r_spec[g][w][sfb][b] = tmp
         
-        params = self.block.cpe.ics[1].params
-        ics_info = self.block.cpe.ics[1].ics_info
+        params = cpe.ics[1].params
+        ics_info = cpe.ics[1].ics_info
         for g in range(params.num_window_groups):
             for w in range(params.window_group_length[g]):
                 for sfb in range(ics_info.max_sfb):
-                    sfb_cb = self.block.cpe.ics[1].section_data.sfb_cb[g][sfb]
+                    sfb_cb = cpe.ics[1].section_data.sfb_cb[g][sfb]
                     is_intensity = 1 if sfb_cb == 14 else -1 if sfb_cb == 15 else 0
-                    invert_intensity = (1 - 2 * self.block.cpe.ms_used[g][sfb]) if self.block.cpe.ms_mask_present == 1 else 1
+                    invert_intensity = (1 - 2 * cpe.ms_used[g][sfb]) if cpe.ms_mask_present == 1 else 1
                     if is_intensity:
-                        scale = is_intensity * invert_intensity * (0.5 ** (0.25 * self.block.cpe.ics[1].scale_factor_data.sf[g][sfb]))
+                        scale = is_intensity * invert_intensity * (0.5 ** (0.25 * cpe.ics[1].scale_factor_data.sf[g][sfb]))
                         num_bins = params.swb_offset[sfb+1] - params.swb_offset[sfb]
                         for b in range(num_bins):
                             r_spec[g][w][sfb][b] = scale * l_spec[g][w][sfb][b]
-    
+        return (l_spec, r_spec)
+
+    def process_spectrum(self, ics_list, spec):
         flat = [None] * 2
         for i in range(2):
-            spec = l_spec if i == 0 else r_spec
-            params = self.block.cpe.ics[i].params
-            ics_info = self.block.cpe.ics[i].ics_info
+            params = ics_list[i].params
+            ics_info = ics_list[i].ics_info
             flat[i] = [None] * params.num_window_groups
             for g in range(params.num_window_groups):
                 flat[i][g] = [None] * params.window_group_length[g]
                 for w in range(params.window_group_length[g]):
-                    flat[i][g][w] = [0] * params.swb_offset[-1]
+                    flat[i][g][w] = [0] * params.window_length
                     for sfb in range(ics_info.max_sfb):
                         num_bins = params.swb_offset[sfb+1] - params.swb_offset[sfb]
                         for b in range(num_bins):
-                            flat[i][g][w][params.swb_offset[sfb]+b] = spec[g][w][sfb][b]
-        self.spec = flat
+                            flat[i][g][w][params.swb_offset[sfb]+b] = spec[i][g][w][sfb][b]
+        spec = flat
 
+        return spec
+
+    def process_filterbank(self, ics_list, spec):
         samples = [None] * 2
         windowed_samples = [None] * 2
         for i in range(2):
-            win_idx = 0
-            params = self.block.cpe.ics[i].params
-            ics_info = self.block.cpe.ics[i].ics_info
+            params = ics_list[i].params
  
             samples[i] = [None] * params.num_window_groups
             windowed_samples[i] = [0] * 2048
             for g in range(params.num_window_groups):
                 samples[i][g] = [None] * params.window_group_length[g]
                 for w in range(params.window_group_length[g]):
-                    spectrum = self.spec[i][g][w]
-                    if len(spectrum) == 0:
-                        continue
+                    spectrum = spec[i][g][w]
+                    
+                    samples[i][g][w] = self.imdct(spectrum)
 
-                    idct = scipy.fft.idct(spectrum, type=4)
-                    s = np.concatenate([idct, np.flip(idct) * -1])
-                    n = ics.params.window_length
-                    s = np.concatenate([s[n//2:n*2], s[0:n//2] * -1])
-                    samples[i][g][w] = s
+        return samples
+
+    def process_window(self, ics_list, samples):
+        windowed_samples = [None] * 2
+        for i in range(2):
+            win_idx = 0
+            params = ics_list[i].params
+            ics_info = ics_list[i].ics_info
+ 
+            windowed_samples[i] = [0] * 2048
+            for g in range(params.num_window_groups):
+                for w in range(params.window_group_length[g]):
                     start = 0
                     if ics_info.window_sequence == EIGHT_SHORT_SEQUENCE:
                         start = 448 + win_idx * 128
                     else:
                         start = 0
                     for n in range(params.window_length * 2):
-                        windowed_samples[i][start + n] += s[n] * self.window(ics_info.window_shape, ics_info.window_sequence, n)
+                        windowed_samples[i][start + n] += samples[i][g][w][n] * self.window(ics_info.window_shape, ics_info.window_sequence, n)
 
                     win_idx += 1
 
-        self.samples = samples
-        self.windowed_samples = windowed_samples
+        return windowed_samples
 
     def window(self, window_shape, window_sequence, n):
         def sin_win(n, N):
@@ -643,3 +674,10 @@ class AAC:
             else:
                 w = sin_win(n, 2048)
         return w
+
+    def imdct(self, spectrum):
+        idct = scipy.fft.idct(spectrum, type=4)
+        s = np.concatenate([idct, np.flip(idct) * -1])
+        N = len(spectrum)
+        samples = np.concatenate([s[N//2:N*2], s[0:N//2] * -1])
+        return samples
