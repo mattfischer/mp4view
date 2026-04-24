@@ -22,7 +22,7 @@ class AACSpectrumScalefactorPlot(QtWidgets.QWidget):
         painter = QtGui.QPainter(self)
         painter.drawRect(0, 0, self.width() - 1, self.height() - 1)
 
-        ics = self.aac.block.cpe.ics[self.channel]
+        ics = self.aac.parsed_block.cpe.ics[self.channel]
 
         prev = None
         regular_brush = QtGui.QBrush(QtGui.QColor(192, 192, 192))
@@ -53,8 +53,8 @@ class AACSpectrumScalefactorPlot(QtWidgets.QWidget):
 
                     painter.fillRect(sx, self.height() - h, w, h, brush)
 
-                    ms_used = (self.aac.block.cpe.ms_mask_present == 2 or 
-                            (self.aac.block.cpe.ms_mask_present == 1 and self.aac.block.cpe.ms_used[g][sfb]))
+                    ms_used = (self.aac.parsed_block.cpe.ms_mask_present == 2 or 
+                            (self.aac.parsed_block.cpe.ms_mask_present == 1 and self.aac.parsed_block.cpe.ms_used[g][sfb]))
 
                     if ms_used:
                         painter.setPen(ms_pen)
@@ -122,7 +122,7 @@ class AACRescaledSpectrumPlot(QtWidgets.QWidget):
             w = self.width() * i / 1024
             painter.drawLine(w, 0, w, self.height())
 
-        ics = self.aac.block.cpe.ics[self.channel]
+        ics = self.aac.parsed_block.cpe.ics[self.channel]
 
         ms_pen = QtGui.QPen(QtGui.QBrush(QtGui.QColor(128, 176, 224)), 2)
         lr_pen = QtGui.QPen(QtGui.QBrush(QtGui.QColor(128, 224, 176)), 2)
@@ -137,8 +137,8 @@ class AACRescaledSpectrumPlot(QtWidgets.QWidget):
                     start = ics.params.swb_offset[sfb]
                     end = ics.params.swb_offset[sfb+1]
 
-                    ms_used = (self.aac.block.cpe.ms_mask_present == 2 or 
-                            (self.aac.block.cpe.ms_mask_present == 1 and self.aac.block.cpe.ms_used[g][sfb]))
+                    ms_used = (self.aac.parsed_block.cpe.ms_mask_present == 2 or 
+                            (self.aac.parsed_block.cpe.ms_mask_present == 1 and self.aac.parsed_block.cpe.ms_used[g][sfb]))
 
                     if ms_used:
                         painter.setPen(ms_pen)
@@ -178,7 +178,7 @@ class AACSpectrumPlot(QtWidgets.QWidget):
         painter = QtGui.QPainter(self)
         painter.drawRect(0, 0, self.width() - 1, self.height() - 1)
 
-        ics = self.aac.block.cpe.ics[self.channel]
+        ics = self.aac.parsed_block.cpe.ics[self.channel]
 
         pen_major = QtGui.QPen(QtGui.QBrush(QtGui.QColor(0, 0, 0)), 1)
         pen_minor = QtGui.QPen(QtGui.QBrush(QtGui.QColor(192, 192, 192)), 1)
@@ -250,7 +250,7 @@ class AACRawSamplesPlot(QtWidgets.QWidget):
         painter = QtGui.QPainter(self)
         painter.drawRect(0, 0, self.width() - 1, self.height() - 1)
 
-        ics = self.aac.block.cpe.ics[self.channel]
+        ics = self.aac.parsed_block.cpe.ics[self.channel]
       
         pen_center = QtGui.QPen(QtGui.QBrush(QtGui.QColor(0, 0, 0)), 2)
         painter.setPen(pen_center)
@@ -316,7 +316,7 @@ class AACFinalSamplesPlot(QtWidgets.QWidget):
         painter = QtGui.QPainter(self)
         painter.drawRect(0, 0, self.width() - 1, self.height() - 1)
 
-        ics = self.aac.block.cpe.ics[self.channel]
+        ics = self.aac.parsed_block.cpe.ics[self.channel]
       
         pen_center = QtGui.QPen(QtGui.QBrush(QtGui.QColor(0, 0, 0)), 2)
         painter.setPen(pen_center)

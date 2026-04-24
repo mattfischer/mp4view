@@ -77,46 +77,25 @@ def compile_huffman(cb):
 spect_codebook = [0] + [compile_huffman(cb) for cb in (aac_tables.spectral_cb_1, aac_tables.spectral_cb_2, aac_tables.spectral_cb_3, aac_tables.spectral_cb_4, aac_tables.spectral_cb_5, aac_tables.spectral_cb_6, aac_tables.spectral_cb_7, aac_tables.spectral_cb_8, aac_tables.spectral_cb_9, aac_tables.spectral_cb_10, aac_tables.spectral_cb_11)]
 sf_codebook = compile_huffman(aac_tables.scalefactor_cb)
 
-class Object:
-    def printitem(self, name, entry, prefix=''):
-        try:
-            has_object = False
-            for item in entry:
-                if isinstance(item, Object):
-                    has_object = True
-            if has_object:
-                for item in entry:
-                    self.printitem(name, item, prefix)
-                return
-        except TypeError:
-            pass
-
-        if isinstance(entry, Object):
-            print(prefix+'%s:' % name)
-            entry.print(prefix+'  ')
-        else:
-            print(prefix+'%s: %s' % (name, entry))
-
-    def print(self, prefix=''):
-        for (name, entry) in self.__dict__.items():
-            self.printitem(name, entry, prefix)
+class ParseObject:
+    pass
 
 class AAC:
     def parse(self, bytes, byte_start, es_descriptor):
         self.bitstream = stream.Bitstream(bytes, byte_start)
-        self.block = self.raw_data_block(es_descriptor)
-        self.process()
+        self.parsed_block = self.parse_raw_data_block(es_descriptor)
+        self.process(self.parsed_block)
 
     def syntax_items(self):
-        return [self.block.syntax_item]
+        return [self.parsed_block.syntax_item]
 
-    def raw_data_block(self, es_descriptor):
+    def parse_raw_data_block(self, es_descriptor):
         self.bitstream.start_syntax_item('raw_data_block')
-        block = Object()
+        block = ParseObject()
         while True:
             id = self.bitstream.getbits(3)
             if id == ID_CPE:
-                block.cpe = self.channel_pair_element(es_descriptor)
+                block.cpe = self.parse_channel_pair_element(es_descriptor)
             elif id == ID_END:
                 break
             else:
@@ -124,14 +103,14 @@ class AAC:
         block.syntax_item = self.bitstream.finish_syntax_item()
         return block
 
-    def channel_pair_element(self, es_descriptor):
+    def parse_channel_pair_element(self, es_descriptor):
         self.bitstream.start_syntax_item('channel_pair_element')
-        cpe = Object()
+        cpe = ParseObject()
         cpe.element_instance_tag = self.bitstream.getbits(4, 'element_instance_tag')
         cpe.common_window = self.bitstream.getbits(1, 'common_window')
         if cpe.common_window:
-            cpe.ics_info = self.ics_info()
-            cpe.params = self.params(cpe.ics_info, es_descriptor)
+            cpe.ics_info = self.parse_ics_info()
+            cpe.params = self.setup_params(cpe.ics_info, es_descriptor)
             cpe.ms_mask_present = self.bitstream.getbits(2, 'ms_mask_present')
             if cpe.ms_mask_present == 1:
                 cpe.ms_used = [None] * cpe.params.num_window_groups
@@ -146,14 +125,14 @@ class AAC:
         else:
             cpe.ics_info = None
 
-        cpe.ics = [self.individual_channel_stream(cpe.ics_info, es_descriptor), 
-                   self.individual_channel_stream(cpe.ics_info, es_descriptor)]
+        cpe.ics = [self.parse_individual_channel_stream(cpe.ics_info, es_descriptor), 
+                   self.parse_individual_channel_stream(cpe.ics_info, es_descriptor)]
         self.bitstream.finish_syntax_item()
         return cpe
 
-    def ics_info(self):
+    def parse_ics_info(self):
         self.bitstream.start_syntax_item('ics_info')
-        ics_info = Object()
+        ics_info = ParseObject()
         ics_reserved_bit = self.bitstream.getbits(1)
         ics_info.window_sequence = self.bitstream.getbits(2, 'window_sequence', format=enum_window_sequence)
         ics_info.window_shape = self.bitstream.getbits(1, 'window_shape')
@@ -166,32 +145,32 @@ class AAC:
         self.bitstream.finish_syntax_item()
         return ics_info
 
-    def individual_channel_stream(self, ics_info, es_descriptor):
+    def parse_individual_channel_stream(self, ics_info, es_descriptor):
         self.bitstream.start_syntax_item('individual_channel_stream')
-        ics = Object()
+        ics = ParseObject()
         ics.global_gain = self.bitstream.getbits(8, 'global_gain')
-        ics.ics_info = ics_info or self.ics_info()
-        ics.params = self.params(ics.ics_info, es_descriptor)
-        ics.section_data = self.section_data(ics.ics_info, ics.params)
-        ics.scale_factor_data = self.scale_factor_data(ics.section_data, ics.ics_info, ics.global_gain, ics.params)
+        ics.ics_info = ics_info or self.parse_ics_info()
+        ics.params = self.setup_params(ics.ics_info, es_descriptor)
+        ics.section_data = self.parse_section_data(ics.ics_info, ics.params)
+        ics.scale_factor_data = self.parse_scale_factor_data(ics.section_data, ics.ics_info, ics.global_gain, ics.params)
 
         ics.pulse_data_present = self.bitstream.getbits(1)
         if ics.pulse_data_present:
-            ics.pulse_data = self.pulse_data()
+            ics.pulse_data = self.parse_pulse_data()
 
         ics.tns_data_present = self.bitstream.getbits(1)
         if ics.tns_data_present:
-            ics.tns_data = self.tns_data(ics.params)
+            ics.tns_data = self.parse_tns_data(ics.params)
 
         ics.gain_control_data_present = self.bitstream.getbits(1)
 
-        ics.spectral_data = self.spectral_data(ics.section_data, ics.ics_info, ics.params)
+        ics.spectral_data = self.parse_spectral_data(ics.section_data, ics.ics_info, ics.params)
 
         self.bitstream.finish_syntax_item()
         return ics
 
-    def params(self, ics_info, es_descriptor):
-        params = Object()
+    def setup_params(self, ics_info, es_descriptor):
+        params = ParseObject()
 
         fs_index = es_descriptor.decConfigDescr.decSpecificInfo.samplingFrequencyIndex
         frameLengthFlag = es_descriptor.decConfigDescr.decSpecificInfo.specificConfig.frameLengthFlag
@@ -251,9 +230,9 @@ class AAC:
 
         return params
 
-    def section_data(self, ics_info, params):
+    def parse_section_data(self, ics_info, params):
         self.bitstream.start_syntax_item('section_data')
-        sect = Object()
+        sect = ParseObject()
         if ics_info.window_sequence == EIGHT_SHORT_SEQUENCE:
             sect_esc_val = (1 << 3) - 1
             sect_esc_len = 3
@@ -300,9 +279,9 @@ class AAC:
         self.bitstream.finish_syntax_item()
         return sect
 
-    def scale_factor_data(self, section_data, ics_info, global_gain, params):
+    def parse_scale_factor_data(self, section_data, ics_info, global_gain, params):
         self.bitstream.start_syntax_item('scale_factor_data')
-        sfd = Object()
+        sfd = ParseObject()
         noise_pcm_flag = 1
         last_sf = global_gain
         last_is = 0
@@ -312,7 +291,6 @@ class AAC:
             sfd.sf[g] = [0] * ics_info.max_sfb
             for sfb in range(ics_info.max_sfb):
                 if section_data.sfb_cb[g][sfb] != ZERO_HCB:
-                    is_intensity = 0
                     if section_data.sfb_cb[g][sfb] in (INTENSITY_HCB, INTENSITY_HCB2):
                         dpcm_is = self.decode_huffman(sf_codebook) - 60
                         s = dpcm_is + last_is
@@ -332,9 +310,9 @@ class AAC:
         self.bitstream.finish_syntax_item()
         return sfd
 
-    def spectral_data(self, section_data, ics_info, params):
+    def parse_spectral_data(self, section_data, ics_info, params):
         self.bitstream.start_syntax_item('spectral_data')
-        spectral_data = Object()
+        spectral_data = ParseObject()
         spectral_data.spec = [None] * params.num_window_groups
         for g in range(params.num_window_groups):
             self.bitstream.start_syntax_item('group %i' % g)
@@ -403,9 +381,9 @@ class AAC:
         self.bitstream.finish_syntax_item()
         return spectral_data
 
-    def pulse_data(self):
+    def parse_pulse_data(self):
         self.bitstream.start_syntax_item('pulse_data')
-        pulse = Object()
+        pulse = ParseObject()
         pulse.number_pulse = self.bitstream.getbits(2, 'number_pulse')
         pulse.pulse_start_sfb = self.bitstream.getbits(6, 'pulse_start_sfb')
         pulse.pulse_offset = [0] * pulse.number_pulse
@@ -421,9 +399,9 @@ class AAC:
         self.bitstream.finish_syntax_item()
         return pulse
 
-    def tns_data(self, params):
+    def parse_tns_data(self, params):
         self.bitstream.start_syntax_item('tns_data')
-        tns = Object()
+        tns = ParseObject()
         if params.window_length == 128:
             n_filt_len = 1
             length_len = 4
@@ -490,12 +468,12 @@ class AAC:
         val = self.bitstream.getbits(n+4)
         return (1 << (n+4)) + val
 
-    def process(self):
-        ics_list = self.block.cpe.ics
+    def process(self, parsed_block):
+        ics_list = parsed_block.cpe.ics
         self.x_quant = self.process_noiseless_coding(ics_list)
         self.x_invquant = self.process_quantization(ics_list, self.x_quant)
         self.x_rescal = self.process_scalefactors(ics_list, self.x_invquant)
-        spec = self.process_joint_stereo(self.block.cpe, self.x_rescal)
+        spec = self.process_joint_stereo(parsed_block.cpe, self.x_rescal)
         self.spec = self.process_spectrum(ics_list, spec)
         self.samples = self.process_filterbank(ics_list, self.spec)
         self.windowed_samples = self.process_window(ics_list, self.samples)
@@ -568,7 +546,7 @@ class AAC:
             for g in range(params.num_window_groups):
                 for w in range(params.window_group_length[g]):
                     for sfb in range(ics_info.max_sfb):
-                        if (self.block.cpe.ms_mask_present == 2 or self.block.cpe.ms_used[g][sfb]) and self.block.cpe.ics[1].section_data.sfb_cb[g][sfb] < 13:
+                        if (cpe.ms_mask_present == 2 or cpe.ms_used[g][sfb]) and cpe.ics[1].section_data.sfb_cb[g][sfb] < 13:
                             num_bins = params.swb_offset[sfb+1] - params.swb_offset[sfb]
                             for b in range(num_bins):
                                 tmp = l_spec[g][w][sfb][b] - r_spec[g][w][sfb][b]
