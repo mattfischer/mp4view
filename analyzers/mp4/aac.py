@@ -5,6 +5,7 @@ from syntax import format_enum
 
 import numpy as np
 import scipy.fft
+import copy
 
 ID_SCE = 0x0
 ID_CPE = 0x1
@@ -539,7 +540,7 @@ class AAC:
         return x_rescal
 
     def process_joint_stereo(self, cpe, spec):
-        (l_spec, r_spec) = spec
+        (l_spec, r_spec) = copy.deepcopy(spec)
 
         if cpe.ms_mask_present >= 1:
             params = cpe.params
