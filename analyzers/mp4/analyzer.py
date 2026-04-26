@@ -6,392 +6,373 @@ from .aac import ONLY_LONG_SEQUENCE, LONG_START_SEQUENCE, EIGHT_SHORT_SEQUENCE, 
 
 from syntax import SyntaxView
 
-from PySide2 import QtWidgets, QtGui
+from PySide2 import QtWidgets, QtGui, QtCore
 
-class AACSpectrumScalefactorPlot(QtWidgets.QWidget):
-    def __init__(self, channel):
-        super(AACSpectrumScalefactorPlot, self).__init__()
-        self.channel = channel
-        self.aac = None
+class AxisLinearUnsigned:
+    def __init__(self, range):
+        self.range = range
+        self.is_log = False
+        self.is_signed = False
 
-    def set_aac(self, aac):
-        self.aac = aac
+    def map(self, value):
+        return value / self.range
+
+class AxisLinearSigned:
+    def __init__(self, range):
+        self.range = range
+        self.is_log = False
+        self.is_signed = True
+
+    def map(self, value):
+        return (1 + value / self.range) / 2
+
+class AxisLogarithmicUnsigned:
+    def __init__(self, decades):
+        self.decades = decades
+        self.is_log = True
+        self.is_signed = False
+
+    def map(self, value):
+        return math.log(1 + value, 10) / self.decades
+
+class AxisLogarithmicSigned:
+    def __init__(self, decades):
+        self.decades = decades
+        self.is_log = True
+        self.is_signed = True
+
+    def map(self, value):
+        sign = 1 if value > 0 else -1
+        return (1 + sign * math.log(1 + abs(value), 10) / self.decades) / 2
+
+class PlotAxes:
+    def __init__(self, horizontal, vertical):
+        self.horizontal = horizontal
+        self.vertical = vertical
+    
+    def draw(self, painter, rect):
+        pen_major = QtGui.QPen(QtGui.QBrush(QtGui.QColor(0, 0, 0)), 1)
+        pen_minor = QtGui.QPen(QtGui.QBrush(QtGui.QColor(192, 192, 192)), 1)
+        pen_center = QtGui.QPen(QtGui.QBrush(QtGui.QColor(0, 0, 0)), 2)
+        
+        for (info, is_vertical) in ((self.horizontal, False), (self.vertical, True)):
+            (axis, major_divisions, minor_divisions) = info
+            def draw_line(value):
+                v = axis.map(value)
+                if is_vertical:
+                    y = rect.bottom() - v * rect.height()
+                    painter.drawLine(rect.left(), y, rect.right(), y)
+                else:
+                    x = rect.left() + v * rect.width()
+                    painter.drawLine(x, rect.top(), x, rect.bottom())
+                
+            if axis.is_log:
+                scale = 1
+                for d in range(axis.decades):
+                    if scale != 1:
+                        painter.setPen(pen_major)
+                        draw_line(scale)
+                        if axis.is_signed:
+                            draw_line(-scale)
+
+                    painter.setPen(pen_minor)
+                    for i in range(minor_divisions):
+                        v = scale * ((i + 1) * 10 / minor_divisions)
+                        draw_line(v)
+                        if axis.is_signed:
+                            draw_line(-v)
+                    scale *= 10
+            else:
+                num_minor = minor_divisions * major_divisions
+                for i in range(1, num_minor):
+                    if i % minor_divisions == 0:
+                        painter.setPen(pen_major)
+                    else:
+                        painter.setPen(pen_minor)
+                
+                    draw_line(i * axis.range / num_minor)
+                    if axis.is_signed:
+                        draw_line(-i * axis.range / num_minor)
+
+            if axis.is_signed:
+                painter.setPen(pen_center)
+                draw_line(0)
+
+class PlotLine:
+    def __init__(self, horizontal_axis, vertical_axis, width, colors, points):
+        self.horizontal_axis = horizontal_axis
+        self.vertical_axis = vertical_axis
+        self.width = width
+        self.colors = colors
+        self.points = points
+
+    def draw(self, painter, rect):
+        pens = [QtGui.QPen(QtGui.QColor(r, g, b), self.width) for (r, g, b) in self.colors]
+        prev = None
+        for (color, point_x, point_y) in self.points:
+            x = rect.left() + rect.width() * self.horizontal_axis.map(point_x)
+            y = rect.bottom() - rect.height() * self.vertical_axis.map(point_y)
+            if prev is not None:
+                (prev_x, prev_y) = prev
+                painter.setPen(pens[color])
+                painter.drawLine(prev_x, prev_y, x, y)
+            prev = (x, y)
+
+class PlotBar:
+    def __init__(self, horizontal_axis, vertical_axis, colors, bars):
+        self.horizontal_axis = horizontal_axis
+        self.vertical_axis = vertical_axis
+        self.colors = colors
+        self.bars = bars
+
+    def draw(self, painter, rect):
+        brushes = [QtGui.QBrush(QtGui.QColor(r, g, b)) for (r, g, b) in self.colors]
+        p = 0
+        for (color, width, height) in self.bars:
+            sx = rect.left() + rect.width() * self.horizontal_axis.map(p)
+            sy = rect.bottom() - rect.height() * self.vertical_axis.map(0)
+            ex = rect.left() + rect.width() * self.horizontal_axis.map(p + width)
+            ey = rect.bottom() - rect.height() * self.vertical_axis.map(height)
+
+            (x, w) = (sx, ex - sx) if ex > sx else (ex, sx - ex)
+            (y, h) = (sy, ey - sy) if ey > sy else (ey, sy - ey)
+
+            painter.fillRect(x, y, w - 1, h, brushes[color])
+            p += width
+
+class AACPlotView(QtWidgets.QWidget):
+    def __init__(self):
+        super(AACPlotView, self).__init__()
+        self.set_num_windows(1)
+
+    def reset(self):
+        self.set_num_windows(self.num_windows)
+
+    def add_plot(self, window, plot):
+        self.plots[window].append(plot)
+
+    def set_num_windows(self, num_windows):
+        self.num_windows = num_windows
+        self.plots = [[] for i in range(num_windows)]
         self.update()
 
     def paintEvent(self, event):
         painter = QtGui.QPainter(self)
         painter.drawRect(0, 0, self.width() - 1, self.height() - 1)
 
-        ics = self.aac.parsed_block.cpe.ics[self.channel]
-
-        prev = None
-        regular_brush = QtGui.QBrush(QtGui.QColor(192, 192, 192))
-        intensity_brush = QtGui.QBrush(QtGui.QColor(192, 192, 0))
-        
-        ms_pen = QtGui.QPen(QtGui.QBrush(QtGui.QColor(128, 176, 224)), 2)
-        lr_pen = QtGui.QPen(QtGui.QBrush(QtGui.QColor(128, 224, 176)), 2)
+        for (i, window_plots) in enumerate(self.plots):
+            rect = QtCore.QRect(self.width() * i / self.num_windows, 0, self.width() / self.num_windows, self.height())
+            for plot in window_plots:
+                plot.draw(painter, rect)
 
         window_pen = QtGui.QPen(QtGui.QBrush(QtGui.QColor(128, 128, 128)), 8)
+        painter.setPen(window_pen)
+        for i in range(1, self.num_windows):
+            x = self.width() * i / self.num_windows
+            painter.drawLine(x, 0, x, self.height())
 
+        painter.end()
+
+class AACSpectrumScalefactorPlot(AACPlotView):
+    def __init__(self, channel):
+        super(AACSpectrumScalefactorPlot, self).__init__()
+        self.channel = channel
+
+    def set_aac(self, aac):
+        cpe = aac.parsed_block.cpe
+        ics = cpe.ics[self.channel]
+        self.set_num_windows(ics.params.num_windows)
+
+        h_axis = AxisLinearUnsigned(ics.params.window_length)
+        v_axis_scalefactor = AxisLinearUnsigned(128)
+        v_axis_spectrum = AxisLinearSigned(32) 
         win_idx = 0
+        scalefactor_colors = [(192, 192, 192), (192, 192, 0)]
+        spectrum_colors = [(128, 176, 224), (128, 224, 176)]
         for g in range(ics.params.num_window_groups):
             for win in range(ics.params.window_group_length[g]):
+                scalefactor_bars = []
+                spectrum_points = []
                 for sfb in range(ics.ics_info.max_sfb):
                     start = ics.params.swb_offset[sfb]
                     end = ics.params.swb_offset[sfb+1]
                     val = ics.scale_factor_data.sf[g][sfb] - 100
+                    is_intensity = ics.section_data.sfb_cb[g][sfb] in (INTENSITY_HCB, INTENSITY_HCB2)
+                    color = 1 if is_intensity else 0
+                    scalefactor_bars.append((color, end - start, val))
 
-                    sx = self.width() * (win_idx + start / ics.params.window_length) / ics.params.num_windows
-                    ex = self.width() * (win_idx + end / ics.params.window_length) / ics.params.num_windows
-                    w = ex - sx - 1
-                    h = self.height() * val/128
-
-                    if ics.section_data.sfb_cb[g][sfb] in (INTENSITY_HCB, INTENSITY_HCB2):
-                        brush = intensity_brush
-                    else:
-                        brush = regular_brush
-
-                    painter.fillRect(sx, self.height() - h, w, h, brush)
-
-                    ms_used = (self.aac.parsed_block.cpe.ms_mask_present == 2 or 
-                            (self.aac.parsed_block.cpe.ms_mask_present == 1 and self.aac.parsed_block.cpe.ms_used[g][sfb]))
-
-                    if ms_used:
-                        painter.setPen(ms_pen)
-                    else:
-                        painter.setPen(lr_pen)
-
+                    ms_used = (cpe.ms_mask_present == 2 or (cpe.ms_mask_present == 1 and cpe.ms_used[g][sfb]))
+                    color = 1 if ms_used else 0
                     for bin in range(start, end):
-                        s = ics.spectral_data.spec[g][win][sfb][bin - start]
-                        x = self.width() * (win_idx + bin / ics.params.window_length) / ics.params.num_windows
-                        y = self.height() * (1 + s / 32) / 2
-                        if prev:
-                            (prev_x, prev_y) = prev
-                            painter.drawLine(prev_x, prev_y, x, y)
-                        prev = (x, y)
+                        value = ics.spectral_data.spec[g][win][sfb][bin - start]
+                        spectrum_points.append((color, bin, value))
 
-                prev = None
+                self.add_plot(win_idx, PlotBar(h_axis, v_axis_scalefactor, scalefactor_colors, scalefactor_bars))
+                self.add_plot(win_idx, PlotLine(h_axis, v_axis_spectrum, 2, spectrum_colors, spectrum_points))
                 win_idx += 1
-                if win_idx < ics.params.num_windows:
-                    painter.setPen(window_pen)
-                    x = self.width() * win_idx / ics.params.num_windows
-                    painter.drawLine(x, 0, x, self.height())
 
-        painter.end()
-
-class AACRescaledSpectrumPlot(QtWidgets.QWidget):
+class AACRescaledSpectrumPlot(AACPlotView):
     def __init__(self, channel):
         super(AACRescaledSpectrumPlot, self).__init__()
         self.channel = channel
-        self.aac = None
 
     def set_aac(self, aac):
-        self.aac = aac
-        self.update()
+        cpe = aac.parsed_block.cpe
+        ics = cpe.ics[self.channel]
+        self.set_num_windows(ics.params.num_windows)
 
-    def paintEvent(self, event):
-        painter = QtGui.QPainter(self)
-        painter.drawRect(0, 0, self.width() - 1, self.height() - 1)
-
-        pen_major = QtGui.QPen(QtGui.QBrush(QtGui.QColor(0, 0, 0)), 1)
-        pen_minor = QtGui.QPen(QtGui.QBrush(QtGui.QColor(192, 192, 192)), 1)
-        
-        pen_center = QtGui.QPen(QtGui.QBrush(QtGui.QColor(0, 0, 0)), 2)
-        painter.setPen(pen_center)
-        painter.drawLine(0, self.height() / 2, self.width(), self.height() / 2)
-        for p in range(7):
-            painter.setPen(pen_major)
-            h = self.height() * p / 14
-            h2 = self.height() / 2
-            painter.drawLine(0, h2 + h, self.width(), h2 + h)
-            painter.drawLine(0, h2 - h, self.width(), h2 - h)
-
-            painter.setPen(pen_minor)
-            x = 10 ** p
-            for i in range(2, 10, 2):
-                h = self.height() * math.log(x * i, 10) / 14
-                painter.drawLine(0, h2 + h, self.width(), h2 + h)
-                painter.drawLine(0, h2 - h, self.width(), h2 - h)
-
-        for i in range(0, 1024, 16):
-            if i % 64 == 0:
-                painter.setPen(pen_major)
-            else:
-                painter.setPen(pen_minor)
-
-            w = self.width() * i / 1024
-            painter.drawLine(w, 0, w, self.height())
-
-        ics = self.aac.parsed_block.cpe.ics[self.channel]
-
-        ms_pen = QtGui.QPen(QtGui.QBrush(QtGui.QColor(128, 176, 224)), 2)
-        lr_pen = QtGui.QPen(QtGui.QBrush(QtGui.QColor(128, 224, 176)), 2)
-
-        window_pen = QtGui.QPen(QtGui.QBrush(QtGui.QColor(128, 128, 128)), 8)
-
-        prev = None
+        h_axis = AxisLinearUnsigned(ics.params.window_length)
+        v_axis = AxisLogarithmicSigned(7) 
         win_idx = 0
+        colors = [(128, 176, 224), (128, 224, 176)]
         for g in range(ics.params.num_window_groups):
             for win in range(ics.params.window_group_length[g]):
+                points = []
                 for sfb in range(ics.ics_info.max_sfb):
                     start = ics.params.swb_offset[sfb]
                     end = ics.params.swb_offset[sfb+1]
 
-                    ms_used = (self.aac.parsed_block.cpe.ms_mask_present == 2 or 
-                            (self.aac.parsed_block.cpe.ms_mask_present == 1 and self.aac.parsed_block.cpe.ms_used[g][sfb]))
-
-                    if ms_used:
-                        painter.setPen(ms_pen)
-                    else:
-                        painter.setPen(lr_pen)
-
+                    ms_used = (cpe.ms_mask_present == 2 or (cpe.ms_mask_present == 1 and cpe.ms_used[g][sfb]))
+                    color = 1 if ms_used else 0
                     for bin in range(start, end):
-                        s = self.aac.x_rescal[self.channel][g][win][sfb][bin - start]
-                        x = self.width() * (win_idx + bin / ics.params.window_length) / ics.params.num_windows
-                        sign = 1 if s > 0 else -1
-                        y = self.height() * (1 - sign * math.log(1 + abs(s), 10) / 7) / 2
-                        if prev:
-                            (prev_x, prev_y) = prev
-                            painter.drawLine(prev_x, prev_y, x, y)
-                        prev = (x, y)
+                        value = aac.x_rescal[self.channel][g][win][sfb][bin - start]
+                        points.append((color, bin, value))
 
-                prev = None
+                self.add_plot(win_idx, PlotAxes((h_axis, ics.params.window_length // 64, 4), (v_axis, 1, 5)))
+                self.add_plot(win_idx, PlotLine(h_axis, v_axis, 2, colors, points))
                 win_idx += 1
-                if win_idx < ics.params.num_windows:
-                    painter.setPen(window_pen)
-                    x = self.width() * win_idx / ics.params.num_windows
-                    painter.drawLine(x, 0, x, self.height())
 
-        painter.end()
-
-class AACSpectrumPlot(QtWidgets.QWidget):
+class AACSpectrumPlot(AACPlotView):
     def __init__(self, channel):
         super(AACSpectrumPlot, self).__init__()
         self.channel = channel
-        self.aac = None
 
     def set_aac(self, aac):
-        self.aac = aac
-        self.update()
+        cpe = aac.parsed_block.cpe
+        ics = cpe.ics[self.channel]
+        self.set_num_windows(ics.params.num_windows)
 
-    def paintEvent(self, event):
-        painter = QtGui.QPainter(self)
-        painter.drawRect(0, 0, self.width() - 1, self.height() - 1)
-
-        ics = self.aac.parsed_block.cpe.ics[self.channel]
-
-        pen_major = QtGui.QPen(QtGui.QBrush(QtGui.QColor(0, 0, 0)), 1)
-        pen_minor = QtGui.QPen(QtGui.QBrush(QtGui.QColor(192, 192, 192)), 1)
-        
-        pen_center = QtGui.QPen(QtGui.QBrush(QtGui.QColor(0, 0, 0)), 2)
-        painter.setPen(pen_center)
-        painter.drawLine(0, self.height() / 2, self.width(), self.height() / 2)
-        for p in range(7):
-            painter.setPen(pen_major)
-            h = self.height() * p / 14
-            h2 = self.height() / 2
-            painter.drawLine(0, h2 + h, self.width(), h2 + h)
-            painter.drawLine(0, h2 - h, self.width(), h2 - h)
-
-            painter.setPen(pen_minor)
-            x = 10 ** p
-            for i in range(2, 10, 2):
-                h = self.height() * math.log(x * i, 10) / 14
-                painter.drawLine(0, h2 + h, self.width(), h2 + h)
-                painter.drawLine(0, h2 - h, self.width(), h2 - h)
-
-        for i in range(0, 1024, 16):
-            if i % 64 == 0:
-                painter.setPen(pen_major)
-            else:
-                painter.setPen(pen_minor)
-
-            w = self.width() * i / 1024
-            painter.drawLine(w, 0, w, self.height())
-
-        window_pen = QtGui.QPen(QtGui.QBrush(QtGui.QColor(128, 128, 128)), 8)
-
-        prev = None
+        h_axis = AxisLinearUnsigned(ics.params.window_length)
+        v_axis = AxisLogarithmicSigned(7) 
         win_idx = 0
-        pen = QtGui.QPen(QtGui.QBrush(QtGui.QColor(128, 176, 224)), 2)
+        colors = [(128, 176, 224)]
         for g in range(ics.params.num_window_groups):
             for win in range(ics.params.window_group_length[g]):
-                painter.setPen(pen)
+                points = []
                 for i in range(ics.params.window_length):
-                    s = self.aac.spec[self.channel][g][win][i]
-                    x = self.width() * (win_idx + i / ics.params.window_length) / ics.params.num_windows
-                    sign = 1 if s > 0 else -1
-                    y = self.height() * (1 - sign * math.log(1 + abs(s), 10) / 7) / 2
-                    if prev:
-                        (prev_x, prev_y) = prev
-                        painter.drawLine(prev_x, prev_y, x, y)
-                    prev = (x, y)
+                    value = aac.spec[self.channel][g][win][i]
+                    points.append((0, i, value))
 
-                prev = None
+                self.add_plot(win_idx, PlotAxes((h_axis, ics.params.window_length // 64, 4), (v_axis, 1, 5)))
+                self.add_plot(win_idx, PlotLine(h_axis, v_axis, 2, colors, points))
                 win_idx += 1
-                if win_idx < ics.params.num_windows:
-                    painter.setPen(window_pen)
-                    x = self.width() * win_idx / ics.params.num_windows
-                    painter.drawLine(x, 0, x, self.height())
 
-        painter.end()
-
-class AACTnsSpectrumPlot(QtWidgets.QWidget):
+class AACTnsSpectrumPlot(AACPlotView):
     def __init__(self, channel):
         super(AACTnsSpectrumPlot, self).__init__()
         self.channel = channel
-        self.aac = None
 
     def set_aac(self, aac):
-        self.aac = aac
-        self.update()
+        cpe = aac.parsed_block.cpe
+        ics = cpe.ics[self.channel]
+        self.set_num_windows(ics.params.num_windows)
 
-    def paintEvent(self, event):
-        painter = QtGui.QPainter(self)
-        painter.drawRect(0, 0, self.width() - 1, self.height() - 1)
+        if not hasattr(ics, 'tns_data'):
+            return
 
-        ics = self.aac.parsed_block.cpe.ics[self.channel]
-
-        if hasattr(ics, 'tns_data'):
-            tns_brush = QtGui.QBrush(QtGui.QColor(192, 192, 192))
-            win_idx = 0
-            for g in range(ics.params.num_window_groups):
-                for win in range(ics.params.window_group_length[g]):        
-                    bottom = ics.ics_info.max_sfb
-                    for f in range(ics.tns_data.n_filt[win_idx]):
-                        top = bottom
-                        bottom = max(top - ics.tns_data.length[win_idx][f], 0)
-                        tns_order = ics.tns_data.order[win_idx][f]
-                        if tns_order > 0:
-                            sfb_start = ics.params.swb_offset[bottom]
-                            sfb_end = ics.params.swb_offset[top]
-                            sx = self.width() * (win_idx + sfb_start / ics.params.window_length) / ics.params.num_windows
-                            ex = self.width() * (win_idx + sfb_end / ics.params.window_length) / ics.params.num_windows
-                            painter.fillRect(sx, 0, ex - sx, self.height(), tns_brush)
-                    win_idx += 1
-
-        pen_major = QtGui.QPen(QtGui.QBrush(QtGui.QColor(0, 0, 0)), 1)
-        pen_minor = QtGui.QPen(QtGui.QBrush(QtGui.QColor(192, 192, 192)), 1)
-        
-        pen_center = QtGui.QPen(QtGui.QBrush(QtGui.QColor(0, 0, 0)), 2)
-        painter.setPen(pen_center)
-        painter.drawLine(0, self.height() / 2, self.width(), self.height() / 2)
-        for p in range(7):
-            painter.setPen(pen_major)
-            h = self.height() * p / 14
-            h2 = self.height() / 2
-            painter.drawLine(0, h2 + h, self.width(), h2 + h)
-            painter.drawLine(0, h2 - h, self.width(), h2 - h)
-
-            painter.setPen(pen_minor)
-            x = 10 ** p
-            for i in range(2, 10, 2):
-                h = self.height() * math.log(x * i, 10) / 14
-                painter.drawLine(0, h2 + h, self.width(), h2 + h)
-                painter.drawLine(0, h2 - h, self.width(), h2 - h)
-
-        for i in range(0, 1024, 16):
-            if i % 64 == 0:
-                painter.setPen(pen_major)
-            else:
-                painter.setPen(pen_minor)
-
-            w = self.width() * i / 1024
-            painter.drawLine(w, 0, w, self.height())
-
-        window_pen = QtGui.QPen(QtGui.QBrush(QtGui.QColor(128, 128, 128)), 8)
-
-        prev = None
+        h_axis = AxisLinearUnsigned(ics.params.window_length)
+        v_axis_spectrum = AxisLogarithmicSigned(7)
+        v_axis_tns = AxisLinearUnsigned(1) 
         win_idx = 0
-        pen = QtGui.QPen(QtGui.QBrush(QtGui.QColor(128, 176, 224)), 2)
+        tns_colors = [(192, 192, 192)]
+        spectrum_colors = [(128, 176, 224)]
         for g in range(ics.params.num_window_groups):
             for win in range(ics.params.window_group_length[g]):
-                painter.setPen(pen)
+                bottom = ics.ics_info.max_sfb
+                tns_bars = []
+                for f in range(ics.tns_data.n_filt[win_idx]):
+                    top = bottom
+                    bottom = max(top - ics.tns_data.length[win_idx][f], 0)
+                    tns_order = ics.tns_data.order[win_idx][f]
+                    sfb_start = ics.params.swb_offset[bottom]
+                    sfb_end = ics.params.swb_offset[top]
+                    value = 1 if tns_order > 0 else 0
+                    tns_bars.insert(0, (0, sfb_end - sfb_start, value))
+
+                if bottom > 0:
+                    tns_bars.insert(0, (0, bottom, 0))
+
+                spectrum_points = []
                 for i in range(ics.params.window_length):
-                    s = self.aac.tns_spec[self.channel][g][win][i]
-                    x = self.width() * (win_idx + i / ics.params.window_length) / ics.params.num_windows
-                    sign = 1 if s > 0 else -1
-                    y = self.height() * (1 - sign * math.log(1 + abs(s), 10) / 7) / 2
-                    if prev:
-                        (prev_x, prev_y) = prev
-                        painter.drawLine(prev_x, prev_y, x, y)
-                    prev = (x, y)
+                    value = aac.tns_spec[self.channel][g][win][i]
+                    spectrum_points.append((0, i, value))
 
-                prev = None
+                self.add_plot(win_idx, PlotBar(h_axis, v_axis_tns, tns_colors, tns_bars))
+                self.add_plot(win_idx, PlotAxes((h_axis, ics.params.window_length // 64, 4), (v_axis_spectrum, 1, 5)))
+                self.add_plot(win_idx, PlotLine(h_axis, v_axis_spectrum, 2, spectrum_colors, spectrum_points))
                 win_idx += 1
-                if win_idx < ics.params.num_windows:
-                    painter.setPen(window_pen)
-                    x = self.width() * win_idx / ics.params.num_windows
-                    painter.drawLine(x, 0, x, self.height())
 
-        painter.end()
-
-class AACRawSamplesPlot(QtWidgets.QWidget):
+class AACRawSamplesPlot(AACPlotView):
     def __init__(self, channel):
         super(AACRawSamplesPlot, self).__init__()
         self.channel = channel
-        self.aac = None
 
     def set_aac(self, aac):
-        self.aac = aac
-        self.update()
+        cpe = aac.parsed_block.cpe
+        ics = cpe.ics[self.channel]
+        self.set_num_windows(ics.params.num_windows)
 
-    def paintEvent(self, event):
-        painter = QtGui.QPainter(self)
-        painter.drawRect(0, 0, self.width() - 1, self.height() - 1)
-
-        ics = self.aac.parsed_block.cpe.ics[self.channel]
-      
-        pen_center = QtGui.QPen(QtGui.QBrush(QtGui.QColor(0, 0, 0)), 2)
-        painter.setPen(pen_center)
-        painter.drawLine(0, self.height() / 2, self.width(), self.height() / 2)
-
-        border_pen = QtGui.QPen(QtGui.QBrush(QtGui.QColor(128, 128, 128)), 8)
-
-        prev = None
+        h_axis = AxisLinearUnsigned(ics.params.window_length * 2)
+        v_axis_samples = AxisLinearSigned(32767)
+        v_axis_window = AxisLinearUnsigned(1)
         win_idx = 0
-        pen = QtGui.QPen(QtGui.QBrush(QtGui.QColor(128, 176, 224)), 2)
+        sample_colors = [(128, 176, 224)]
+        window_colors = [(128, 128, 128)]
         for g in range(ics.params.num_window_groups):
             for win in range(ics.params.window_group_length[g]):
-                samples = self.aac.samples[self.channel][g][win]
-                if samples is None:
-                    continue
-
-                painter.setPen(pen)
+                sample_points = []
+                window_points = []
                 for i in range(ics.params.window_length * 2):
-                    s = samples[i]
-                    x = self.width() * (win_idx + i / (ics.params.window_length * 2)) / ics.params.num_windows
-                    y = self.height() * (1 - s / 32767) / 2
-                    if prev:
-                        (prev_x, prev_y) = prev
-                        painter.drawLine(prev_x, prev_y, x, y)
-                    prev = (x, y)
+                    value = aac.samples[self.channel][g][win][i]
+                    sample_points.append((0, i, value))
+                    value = aac.window(ics.ics_info.window_shape, ics.ics_info.window_sequence, i)
+                    window_points.append((0, i, value))
 
-                prev = None
+                self.add_plot(win_idx, PlotLine(h_axis, v_axis_window, 1, window_colors, window_points))
+                self.add_plot(win_idx, PlotAxes((h_axis, 0, 0), (v_axis_samples, 0, 0)))
+                self.add_plot(win_idx, PlotLine(h_axis, v_axis_samples, 2, sample_colors, sample_points))
                 win_idx += 1
-                if win_idx < ics.params.num_windows:
-                    painter.setPen(border_pen)
-                    x = self.width() * win_idx / ics.params.num_windows
-                    painter.drawLine(x, 0, x, self.height())
 
-        window_pen = QtGui.QPen(QtGui.QBrush(QtGui.QColor(128, 128, 128)), 1)
-        painter.setPen(window_pen)
-        prev = None
+class AACFinalSamplesPlot(AACPlotView):
+    def __init__(self, channel):
+        super(AACFinalSamplesPlot, self).__init__()
+        self.channel = channel
 
-        for i in range(0, self.width(), 10):
-            n = i * 2048 / self.width() % (ics.params.window_length * 2)
-            w = self.aac.window(ics.ics_info.window_shape, ics.ics_info.window_sequence, n)
+    def set_aac(self, aac_pair):
+        (aac, prev_aac) = aac_pair
+        cpe = aac.parsed_block.cpe
+        ics = cpe.ics[self.channel]
+        self.reset()
 
-            x = i
-            y = self.height() * (1 - w)
-            if prev:
-                (prev_x, prev_y) = prev
-                painter.drawLine(prev_x, prev_y, x, y)
-            prev = (x, y)
+        samples = aac.windowed_samples[self.channel]
+        if prev_aac:
+            prev_samples = prev_aac.windowed_samples[self.channel]
+        else:
+            prev_samples = [0] * 2048
 
-        painter.end()
+        h_axis = AxisLinearUnsigned(1024)
+        v_axis = AxisLinearSigned(32767)
+        win_idx = 0
+        colors = [(128, 176, 224)]
+        points = []
+        for i in range(1024):
+            value = samples[i] + prev_samples[1024 + i]
+            points.append((0, i, value))
 
-class AACFinalSamplesPlot(QtWidgets.QWidget):
+        self.add_plot(win_idx, PlotAxes((h_axis, 0, 0), (v_axis, 0, 0)))
+        self.add_plot(win_idx, PlotLine(h_axis, v_axis, 2, colors, points))
+
+class AACFinalSamplesPlot2(QtWidgets.QWidget):
     def __init__(self, channel):
         super(AACFinalSamplesPlot, self).__init__()
         self.channel = channel
