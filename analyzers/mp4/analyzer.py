@@ -178,7 +178,7 @@ class AACSpectrumScalefactorPlot(AACPlotView):
         super(AACSpectrumScalefactorPlot, self).__init__()
         self.channel = channel
 
-    def set_aac(self, aac):
+    def set_aac(self, aac, prev_aac):
         cpe = aac.parsed_block.cpe
         ics = cpe.ics[self.channel]
         self.set_num_windows(ics.params.num_windows)
@@ -216,7 +216,7 @@ class AACRescaledSpectrumPlot(AACPlotView):
         super(AACRescaledSpectrumPlot, self).__init__()
         self.channel = channel
 
-    def set_aac(self, aac):
+    def set_aac(self, aac, prev_aac):
         cpe = aac.parsed_block.cpe
         ics = cpe.ics[self.channel]
         self.set_num_windows(ics.params.num_windows)
@@ -247,7 +247,7 @@ class AACSpectrumPlot(AACPlotView):
         super(AACSpectrumPlot, self).__init__()
         self.channel = channel
 
-    def set_aac(self, aac):
+    def set_aac(self, aac, prev_aac):
         cpe = aac.parsed_block.cpe
         ics = cpe.ics[self.channel]
         self.set_num_windows(ics.params.num_windows)
@@ -272,7 +272,7 @@ class AACTnsSpectrumPlot(AACPlotView):
         super(AACTnsSpectrumPlot, self).__init__()
         self.channel = channel
 
-    def set_aac(self, aac):
+    def set_aac(self, aac, prev_aac):
         cpe = aac.parsed_block.cpe
         ics = cpe.ics[self.channel]
         self.set_num_windows(ics.params.num_windows)
@@ -317,7 +317,7 @@ class AACRawSamplesPlot(AACPlotView):
         super(AACRawSamplesPlot, self).__init__()
         self.channel = channel
 
-    def set_aac(self, aac):
+    def set_aac(self, aac, prev_aac):
         cpe = aac.parsed_block.cpe
         ics = cpe.ics[self.channel]
         self.set_num_windows(ics.params.num_windows)
@@ -348,8 +348,7 @@ class AACFinalSamplesPlot(AACPlotView):
         super(AACFinalSamplesPlot, self).__init__()
         self.channel = channel
 
-    def set_aac(self, aac_pair):
-        (aac, prev_aac) = aac_pair
+    def set_aac(self, aac, prev_aac):
         cpe = aac.parsed_block.cpe
         ics = cpe.ics[self.channel]
         self.reset()
@@ -415,7 +414,7 @@ class AACFinalSamplesPlot2(QtWidgets.QWidget):
         painter.end()
 
 class AACPerChannelView(QtWidgets.QScrollArea):
-    def __init__(self, cls):
+    def __init__(self, cls, title):
         super(AACPerChannelView, self).__init__()
 
         self.widget = QtWidgets.QWidget()
@@ -428,10 +427,11 @@ class AACPerChannelView(QtWidgets.QScrollArea):
         self.widget.setLayout(layout)
         self.widget.setMinimumSize(500, 500)
         self.setWidget(self.widget)
+        self.title = title
 
-    def set_aac(self, aac):
+    def set_aac(self, aac, prev_aac):
         for plot in self.spectrum_plots:
-            plot.set_aac(aac)
+            plot.set_aac(aac, prev_aac)
 
     def resizeEvent(self, event):
         self.widget.setFixedSize(event.size().width(), event.size().width())
@@ -453,20 +453,20 @@ class AACStreamView(QtWidgets.QWidget):
         vlayout.addLayout(hlayout)
 
         tabs = QtWidgets.QTabWidget()
+        self.aac_views = []
+        def add_aac_view(view):
+            tabs.addTab(view, view.title)
+            self.aac_views.append(view)
+
         self.syntax_view = SyntaxView('Syntax')
         tabs.addTab(self.syntax_view, self.syntax_view.title)
-        self.spec_sf_view = AACPerChannelView(AACSpectrumScalefactorPlot)
-        tabs.addTab(self.spec_sf_view, 'Raw Spectrum/Scalefactors')
-        self.rescaled_spectrum_view = AACPerChannelView(AACRescaledSpectrumPlot)
-        tabs.addTab(self.rescaled_spectrum_view, 'Rescaled Spectrum')
-        self.spectrum_view = AACPerChannelView(AACSpectrumPlot)
-        tabs.addTab(self.spectrum_view, 'Spectrum')
-        self.tns_spectrum_view = AACPerChannelView(AACTnsSpectrumPlot)
-        tabs.addTab(self.tns_spectrum_view, 'TNS Spectrum')
-        self.raw_samples_view = AACPerChannelView(AACRawSamplesPlot)
-        tabs.addTab(self.raw_samples_view, 'Raw Samples')
-        self.final_samples_view = AACPerChannelView(AACFinalSamplesPlot)
-        tabs.addTab(self.final_samples_view, 'Final Samples')
+
+        add_aac_view(AACPerChannelView(AACSpectrumScalefactorPlot, 'Raw Spectrum/Scalefactors'))
+        add_aac_view(AACPerChannelView(AACRescaledSpectrumPlot, 'Rescaled Spectrum'))
+        add_aac_view(AACPerChannelView(AACSpectrumPlot, 'Spectrum'))
+        add_aac_view(AACPerChannelView(AACTnsSpectrumPlot, 'TNS Spectrum'))
+        add_aac_view(AACPerChannelView(AACRawSamplesPlot, 'Raw Samples'))
+        add_aac_view(AACPerChannelView(AACFinalSamplesPlot, 'Final Samples'))
 
         vlayout.addWidget(tabs)
 
@@ -476,25 +476,21 @@ class AACStreamView(QtWidgets.QWidget):
 
     def spinbox_changed(self, value):
         (bytes, location) = self.file.getsample(value)
-        self.aac = AAC()
-        self.aac.parse(bytes, location, self.file.es_descriptor())
+        aac = AAC()
+        aac.parse(bytes, location, self.file.es_descriptor())
 
         if value > 0:
             (bytes, location) = self.file.getsample(value - 1)
-            self.prev_aac = AAC()
-            self.prev_aac.parse(bytes, location, self.file.es_descriptor())
+            prev_aac = AAC()
+            prev_aac.parse(bytes, location, self.file.es_descriptor())
         else:
-            self.prev_aac = None
+            prev_aac = None
 
-        self.syntax_view.update_syntax(self.file.bytestream, self.aac.syntax_items())
+        self.syntax_view.update_syntax(self.file.bytestream, aac.syntax_items())
         self.syntax_view.set_highlight(location, len(bytes))
 
-        self.spec_sf_view.set_aac(self.aac)
-        self.rescaled_spectrum_view.set_aac(self.aac)
-        self.spectrum_view.set_aac(self.aac)
-        self.tns_spectrum_view.set_aac(self.aac)
-        self.raw_samples_view.set_aac(self.aac)
-        self.final_samples_view.set_aac((self.aac, self.prev_aac))
+        for aac_view in self.aac_views:
+            aac_view.set_aac(aac, prev_aac)
 
 class Analyzer:
     def __init__(self, stream):
