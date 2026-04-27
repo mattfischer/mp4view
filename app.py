@@ -10,6 +10,7 @@ class App(QtWidgets.QApplication):
         super(App, self).__init__(args)
 
         self.main_window = QtWidgets.QMainWindow()
+        self.main_window.setWindowTitle('MP4 Viewer')
         self.main_window.setMinimumSize(1024, 768)
 
         file = open('test.m4a', 'rb')
