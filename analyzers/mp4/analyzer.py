@@ -23,7 +23,7 @@ class StreamView(QtWidgets.QWidget):
         vlayout.addLayout(hlayout)
 
         tabs = QtWidgets.QTabWidget()
-        for view in self.aac_analyzer.analyze():
+        for view in self.aac_analyzer.get_views():
             tabs.addTab(view, view.title)
 
         vlayout.addWidget(tabs)
@@ -40,7 +40,7 @@ class Analyzer:
         self.stream = stream
         self.file = File(stream)
 
-    def analyze(self):
+    def get_views(self):
         views = []
         views.append(syntax.SyntaxView('MP4 File', self.stream, self.file.syntax_items()))
         views.append(StreamView(self.file))

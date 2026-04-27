@@ -17,7 +17,7 @@ class App(QtWidgets.QApplication):
 
         self.tab_widget = QtWidgets.QTabWidget()
         analyzer = analyzers.mp4.Analyzer(self.stream)
-        for view in analyzer.analyze():
+        for view in analyzer.get_views():
             self.tab_widget.addTab(view, view.title)
         self.main_window.setCentralWidget(self.tab_widget)
         self.main_window.show()

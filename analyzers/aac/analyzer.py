@@ -237,7 +237,7 @@ class Analyzer:
             PerChannelView(FinalSamplesPlot, 'Final Samples')
         ]
 
-    def analyze(self):
+    def get_views(self):
         return [self.syntax_view] + self.aac_views
 
     def set_sample(self, sample):
