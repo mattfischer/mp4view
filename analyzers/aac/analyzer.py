@@ -1,176 +1,9 @@
-import math
-
-from . import block
+from . import block, plot
 import syntax
 
-from PySide2 import QtWidgets, QtGui, QtCore
+from PySide2 import QtWidgets
 
-class AxisLinearUnsigned:
-    def __init__(self, range):
-        self.range = range
-        self.is_log = False
-        self.is_signed = False
-
-    def map(self, value):
-        return value / self.range
-
-class AxisLinearSigned:
-    def __init__(self, range):
-        self.range = range
-        self.is_log = False
-        self.is_signed = True
-
-    def map(self, value):
-        return (1 + value / self.range) / 2
-
-class AxisLogarithmicUnsigned:
-    def __init__(self, decades):
-        self.decades = decades
-        self.is_log = True
-        self.is_signed = False
-
-    def map(self, value):
-        return math.log(1 + value, 10) / self.decades
-
-class AxisLogarithmicSigned:
-    def __init__(self, decades):
-        self.decades = decades
-        self.is_log = True
-        self.is_signed = True
-
-    def map(self, value):
-        sign = 1 if value > 0 else -1
-        return (1 + sign * math.log(1 + abs(value), 10) / self.decades) / 2
-
-class PlotAxes:
-    def __init__(self, horizontal, vertical):
-        self.horizontal = horizontal
-        self.vertical = vertical
-    
-    def draw(self, painter, rect):
-        pen_major = QtGui.QPen(QtGui.QBrush(QtGui.QColor(0, 0, 0)), 1)
-        pen_minor = QtGui.QPen(QtGui.QBrush(QtGui.QColor(192, 192, 192)), 1)
-        pen_center = QtGui.QPen(QtGui.QBrush(QtGui.QColor(0, 0, 0)), 2)
-        
-        for (info, is_vertical) in ((self.horizontal, False), (self.vertical, True)):
-            (axis, major_divisions, minor_divisions) = info
-            def draw_line(value):
-                v = axis.map(value)
-                if is_vertical:
-                    y = rect.bottom() - v * rect.height()
-                    painter.drawLine(rect.left(), y, rect.right(), y)
-                else:
-                    x = rect.left() + v * rect.width()
-                    painter.drawLine(x, rect.top(), x, rect.bottom())
-                
-            if axis.is_log:
-                scale = 1
-                for d in range(axis.decades):
-                    if scale != 1:
-                        painter.setPen(pen_major)
-                        draw_line(scale)
-                        if axis.is_signed:
-                            draw_line(-scale)
-
-                    painter.setPen(pen_minor)
-                    for i in range(minor_divisions):
-                        v = scale * ((i + 1) * 10 / minor_divisions)
-                        draw_line(v)
-                        if axis.is_signed:
-                            draw_line(-v)
-                    scale *= 10
-            else:
-                num_minor = minor_divisions * major_divisions
-                for i in range(1, num_minor):
-                    if i % minor_divisions == 0:
-                        painter.setPen(pen_major)
-                    else:
-                        painter.setPen(pen_minor)
-                
-                    draw_line(i * axis.range / num_minor)
-                    if axis.is_signed:
-                        draw_line(-i * axis.range / num_minor)
-
-            if axis.is_signed:
-                painter.setPen(pen_center)
-                draw_line(0)
-
-class PlotLine:
-    def __init__(self, horizontal_axis, vertical_axis, width, colors, points):
-        self.horizontal_axis = horizontal_axis
-        self.vertical_axis = vertical_axis
-        self.width = width
-        self.colors = colors
-        self.points = points
-
-    def draw(self, painter, rect):
-        pens = [QtGui.QPen(QtGui.QColor(r, g, b), self.width) for (r, g, b) in self.colors]
-        prev = None
-        for (color, point_x, point_y) in self.points:
-            x = rect.left() + rect.width() * self.horizontal_axis.map(point_x)
-            y = rect.bottom() - rect.height() * self.vertical_axis.map(point_y)
-            if prev is not None:
-                (prev_x, prev_y) = prev
-                painter.setPen(pens[color])
-                painter.drawLine(prev_x, prev_y, x, y)
-            prev = (x, y)
-
-class PlotBar:
-    def __init__(self, horizontal_axis, vertical_axis, colors, bars):
-        self.horizontal_axis = horizontal_axis
-        self.vertical_axis = vertical_axis
-        self.colors = colors
-        self.bars = bars
-
-    def draw(self, painter, rect):
-        brushes = [QtGui.QBrush(QtGui.QColor(r, g, b)) for (r, g, b) in self.colors]
-        p = 0
-        for (color, width, height) in self.bars:
-            sx = rect.left() + rect.width() * self.horizontal_axis.map(p)
-            sy = rect.bottom() - rect.height() * self.vertical_axis.map(0)
-            ex = rect.left() + rect.width() * self.horizontal_axis.map(p + width)
-            ey = rect.bottom() - rect.height() * self.vertical_axis.map(height)
-
-            (x, w) = (sx, ex - sx) if ex > sx else (ex, sx - ex)
-            (y, h) = (sy, ey - sy) if ey > sy else (ey, sy - ey)
-
-            painter.fillRect(x, y, w - 1, h, brushes[color])
-            p += width
-
-class PlotView(QtWidgets.QWidget):
-    def __init__(self):
-        super(PlotView, self).__init__()
-        self.set_num_windows(1)
-
-    def reset(self):
-        self.set_num_windows(self.num_windows)
-
-    def add_plot(self, window, plot):
-        self.plots[window].append(plot)
-
-    def set_num_windows(self, num_windows):
-        self.num_windows = num_windows
-        self.plots = [[] for i in range(num_windows)]
-        self.update()
-
-    def paintEvent(self, event):
-        painter = QtGui.QPainter(self)
-        painter.drawRect(0, 0, self.width() - 1, self.height() - 1)
-
-        for (i, window_plots) in enumerate(self.plots):
-            rect = QtCore.QRect(self.width() * i / self.num_windows, 0, self.width() / self.num_windows, self.height())
-            for plot in window_plots:
-                plot.draw(painter, rect)
-
-        window_pen = QtGui.QPen(QtGui.QBrush(QtGui.QColor(128, 128, 128)), 8)
-        painter.setPen(window_pen)
-        for i in range(1, self.num_windows):
-            x = self.width() * i / self.num_windows
-            painter.drawLine(x, 0, x, self.height())
-
-        painter.end()
-
-class SpectrumScalefactorPlot(PlotView):
+class SpectrumScalefactorPlot(plot.PlotView):
     def __init__(self, channel):
         super(SpectrumScalefactorPlot, self).__init__()
         self.channel = channel
@@ -180,9 +13,9 @@ class SpectrumScalefactorPlot(PlotView):
         ics = cpe.ics[self.channel]
         self.set_num_windows(ics.params.num_windows)
 
-        h_axis = AxisLinearUnsigned(ics.params.window_length)
-        v_axis_scalefactor = AxisLinearUnsigned(128)
-        v_axis_spectrum = AxisLinearSigned(32) 
+        h_axis = plot.AxisLinearUnsigned(ics.params.window_length)
+        v_axis_scalefactor = plot.AxisLinearUnsigned(128)
+        v_axis_spectrum = plot.AxisLinearSigned(32) 
         win_idx = 0
         scalefactor_colors = [(192, 192, 192), (192, 192, 0)]
         spectrum_colors = [(128, 176, 224), (128, 224, 176)]
@@ -204,11 +37,11 @@ class SpectrumScalefactorPlot(PlotView):
                         value = ics.spectral_data.spec[g][win][sfb][bin - start]
                         spectrum_points.append((color, bin, value))
 
-                self.add_plot(win_idx, PlotBar(h_axis, v_axis_scalefactor, scalefactor_colors, scalefactor_bars))
-                self.add_plot(win_idx, PlotLine(h_axis, v_axis_spectrum, 2, spectrum_colors, spectrum_points))
+                self.add_plot(win_idx, plot.PlotBar(h_axis, v_axis_scalefactor, scalefactor_colors, scalefactor_bars))
+                self.add_plot(win_idx, plot.PlotLine(h_axis, v_axis_spectrum, 2, spectrum_colors, spectrum_points))
                 win_idx += 1
 
-class RescaledSpectrumPlot(PlotView):
+class RescaledSpectrumPlot(plot.PlotView):
     def __init__(self, channel):
         super(RescaledSpectrumPlot, self).__init__()
         self.channel = channel
@@ -218,8 +51,8 @@ class RescaledSpectrumPlot(PlotView):
         ics = cpe.ics[self.channel]
         self.set_num_windows(ics.params.num_windows)
 
-        h_axis = AxisLinearUnsigned(ics.params.window_length)
-        v_axis = AxisLogarithmicSigned(7) 
+        h_axis = plot.AxisLinearUnsigned(ics.params.window_length)
+        v_axis = plot.AxisLogarithmicSigned(7) 
         win_idx = 0
         colors = [(128, 176, 224), (128, 224, 176)]
         for g in range(ics.params.num_window_groups):
@@ -235,11 +68,11 @@ class RescaledSpectrumPlot(PlotView):
                         value = aac.x_rescal[self.channel][g][win][sfb][bin - start]
                         points.append((color, bin, value))
 
-                self.add_plot(win_idx, PlotAxes((h_axis, ics.params.window_length // 64, 4), (v_axis, 1, 5)))
-                self.add_plot(win_idx, PlotLine(h_axis, v_axis, 2, colors, points))
+                self.add_plot(win_idx, plot.PlotAxes((h_axis, ics.params.window_length // 64, 4), (v_axis, 1, 5)))
+                self.add_plot(win_idx, plot.PlotLine(h_axis, v_axis, 2, colors, points))
                 win_idx += 1
 
-class SpectrumPlot(PlotView):
+class SpectrumPlot(plot.PlotView):
     def __init__(self, channel):
         super(SpectrumPlot, self).__init__()
         self.channel = channel
@@ -249,8 +82,8 @@ class SpectrumPlot(PlotView):
         ics = cpe.ics[self.channel]
         self.set_num_windows(ics.params.num_windows)
 
-        h_axis = AxisLinearUnsigned(ics.params.window_length)
-        v_axis = AxisLogarithmicSigned(7) 
+        h_axis = plot.AxisLinearUnsigned(ics.params.window_length)
+        v_axis = plot.AxisLogarithmicSigned(7) 
         win_idx = 0
         colors = [(128, 176, 224)]
         for g in range(ics.params.num_window_groups):
@@ -260,11 +93,11 @@ class SpectrumPlot(PlotView):
                     value = aac.spec[self.channel][g][win][i]
                     points.append((0, i, value))
 
-                self.add_plot(win_idx, PlotAxes((h_axis, ics.params.window_length // 64, 4), (v_axis, 1, 5)))
-                self.add_plot(win_idx, PlotLine(h_axis, v_axis, 2, colors, points))
+                self.add_plot(win_idx, plot.PlotAxes((h_axis, ics.params.window_length // 64, 4), (v_axis, 1, 5)))
+                self.add_plot(win_idx, plot.PlotLine(h_axis, v_axis, 2, colors, points))
                 win_idx += 1
 
-class TNSSpectrumPlot(PlotView):
+class TNSSpectrumPlot(plot.PlotView):
     def __init__(self, channel):
         super(TNSSpectrumPlot, self).__init__()
         self.channel = channel
@@ -277,9 +110,9 @@ class TNSSpectrumPlot(PlotView):
         if not hasattr(ics, 'tns_data'):
             return
 
-        h_axis = AxisLinearUnsigned(ics.params.window_length)
-        v_axis_spectrum = AxisLogarithmicSigned(7)
-        v_axis_tns = AxisLinearUnsigned(1) 
+        h_axis = plot.AxisLinearUnsigned(ics.params.window_length)
+        v_axis_spectrum = plot.AxisLogarithmicSigned(7)
+        v_axis_tns = plot.AxisLinearUnsigned(1) 
         win_idx = 0
         tns_colors = [(192, 192, 192)]
         spectrum_colors = [(128, 176, 224)]
@@ -304,12 +137,12 @@ class TNSSpectrumPlot(PlotView):
                     value = aac.tns_spec[self.channel][g][win][i]
                     spectrum_points.append((0, i, value))
 
-                self.add_plot(win_idx, PlotBar(h_axis, v_axis_tns, tns_colors, tns_bars))
-                self.add_plot(win_idx, PlotAxes((h_axis, ics.params.window_length // 64, 4), (v_axis_spectrum, 1, 5)))
-                self.add_plot(win_idx, PlotLine(h_axis, v_axis_spectrum, 2, spectrum_colors, spectrum_points))
+                self.add_plot(win_idx, plot.PlotBar(h_axis, v_axis_tns, tns_colors, tns_bars))
+                self.add_plot(win_idx, plot.PlotAxes((h_axis, ics.params.window_length // 64, 4), (v_axis_spectrum, 1, 5)))
+                self.add_plot(win_idx, plot.PlotLine(h_axis, v_axis_spectrum, 2, spectrum_colors, spectrum_points))
                 win_idx += 1
 
-class RawSamplesPlot(PlotView):
+class RawSamplesPlot(plot.PlotView):
     def __init__(self, channel):
         super(RawSamplesPlot, self).__init__()
         self.channel = channel
@@ -319,9 +152,9 @@ class RawSamplesPlot(PlotView):
         ics = cpe.ics[self.channel]
         self.set_num_windows(ics.params.num_windows)
 
-        h_axis = AxisLinearUnsigned(ics.params.window_length * 2)
-        v_axis_samples = AxisLinearSigned(32767)
-        v_axis_window = AxisLinearUnsigned(1)
+        h_axis = plot.AxisLinearUnsigned(ics.params.window_length * 2)
+        v_axis_samples = plot.AxisLinearSigned(32767)
+        v_axis_window = plot.AxisLinearUnsigned(1)
         win_idx = 0
         sample_colors = [(128, 176, 224)]
         window_colors = [(128, 128, 128)]
@@ -335,12 +168,12 @@ class RawSamplesPlot(PlotView):
                     value = aac.window(ics.ics_info.window_shape, ics.ics_info.window_sequence, i)
                     window_points.append((0, i, value))
 
-                self.add_plot(win_idx, PlotLine(h_axis, v_axis_window, 1, window_colors, window_points))
-                self.add_plot(win_idx, PlotAxes((h_axis, 0, 0), (v_axis_samples, 0, 0)))
-                self.add_plot(win_idx, PlotLine(h_axis, v_axis_samples, 2, sample_colors, sample_points))
+                self.add_plot(win_idx, plot.PlotLine(h_axis, v_axis_window, 1, window_colors, window_points))
+                self.add_plot(win_idx, plot.PlotAxes((h_axis, 0, 0), (v_axis_samples, 0, 0)))
+                self.add_plot(win_idx, plot.PlotLine(h_axis, v_axis_samples, 2, sample_colors, sample_points))
                 win_idx += 1
 
-class FinalSamplesPlot(PlotView):
+class FinalSamplesPlot(plot.PlotView):
     def __init__(self, channel):
         super(FinalSamplesPlot, self).__init__()
         self.channel = channel
@@ -355,8 +188,8 @@ class FinalSamplesPlot(PlotView):
         else:
             prev_samples = [0] * 2048
 
-        h_axis = AxisLinearUnsigned(1024)
-        v_axis = AxisLinearSigned(32767)
+        h_axis = plot.AxisLinearUnsigned(1024)
+        v_axis = plot.AxisLinearSigned(32767)
         win_idx = 0
         colors = [(128, 176, 224)]
         points = []
@@ -364,8 +197,8 @@ class FinalSamplesPlot(PlotView):
             value = samples[i] + prev_samples[1024 + i]
             points.append((0, i, value))
 
-        self.add_plot(win_idx, PlotAxes((h_axis, 0, 0), (v_axis, 0, 0)))
-        self.add_plot(win_idx, PlotLine(h_axis, v_axis, 2, colors, points))
+        self.add_plot(win_idx, plot.PlotAxes((h_axis, 0, 0), (v_axis, 0, 0)))
+        self.add_plot(win_idx, plot.PlotLine(h_axis, v_axis, 2, colors, points))
 
 class PerChannelView(QtWidgets.QScrollArea):
     def __init__(self, cls, title):
