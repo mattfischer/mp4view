@@ -436,11 +436,47 @@ class AACPerChannelView(QtWidgets.QScrollArea):
     def resizeEvent(self, event):
         self.widget.setFixedSize(event.size().width(), event.size().width())
 
-class AACStreamView(QtWidgets.QWidget):
+class AACAnalyzer:
+    def __init__(self, mp4_file):
+        self.mp4_file = mp4_file
+        self.syntax_view = SyntaxView('Syntax')
+
+        self.aac_views = [
+            AACPerChannelView(AACSpectrumScalefactorPlot, 'Raw Spectrum/Scalefactors'),
+            AACPerChannelView(AACRescaledSpectrumPlot, 'Rescaled Spectrum'),
+            AACPerChannelView(AACSpectrumPlot, 'Spectrum'),
+            AACPerChannelView(AACTnsSpectrumPlot, 'TNS Spectrum'),
+            AACPerChannelView(AACRawSamplesPlot, 'Raw Samples'),
+            AACPerChannelView(AACFinalSamplesPlot, 'Final Samples')
+        ]
+
+    def analyze(self):
+        return [self.syntax_view] + self.aac_views
+
+    def set_sample(self, sample):
+        (bytes, location) = self.mp4_file.getsample(sample)
+        aac = AAC()
+        aac.parse(bytes, location, self.mp4_file.es_descriptor())
+
+        if sample > 0:
+            (prev_bytes, prev_location) = self.mp4_file.getsample(sample - 1)
+            prev_aac = AAC()
+            prev_aac.parse(bytes, prev_location, self.mp4_file.es_descriptor())
+        else:
+            prev_aac = None
+
+        self.syntax_view.update_syntax(self.mp4_file.bytestream, aac.syntax_items())
+        self.syntax_view.set_highlight(location, len(bytes))
+
+        for aac_view in self.aac_views:
+            aac_view.set_aac(aac, prev_aac)
+
+class Mp4StreamView(QtWidgets.QWidget):
     def __init__(self, file):
-        super(AACStreamView, self).__init__()
+        super(Mp4StreamView, self).__init__()
         self.title = 'AAC Streams'
         self.file = file
+        self.aac_analyzer = AACAnalyzer(file)
 
         hlayout = QtWidgets.QHBoxLayout()
         hlayout.addWidget(QtWidgets.QLabel('Sample:'))
@@ -453,20 +489,8 @@ class AACStreamView(QtWidgets.QWidget):
         vlayout.addLayout(hlayout)
 
         tabs = QtWidgets.QTabWidget()
-        self.aac_views = []
-        def add_aac_view(view):
+        for view in self.aac_analyzer.analyze():
             tabs.addTab(view, view.title)
-            self.aac_views.append(view)
-
-        self.syntax_view = SyntaxView('Syntax')
-        tabs.addTab(self.syntax_view, self.syntax_view.title)
-
-        add_aac_view(AACPerChannelView(AACSpectrumScalefactorPlot, 'Raw Spectrum/Scalefactors'))
-        add_aac_view(AACPerChannelView(AACRescaledSpectrumPlot, 'Rescaled Spectrum'))
-        add_aac_view(AACPerChannelView(AACSpectrumPlot, 'Spectrum'))
-        add_aac_view(AACPerChannelView(AACTnsSpectrumPlot, 'TNS Spectrum'))
-        add_aac_view(AACPerChannelView(AACRawSamplesPlot, 'Raw Samples'))
-        add_aac_view(AACPerChannelView(AACFinalSamplesPlot, 'Final Samples'))
 
         vlayout.addWidget(tabs)
 
@@ -475,22 +499,7 @@ class AACStreamView(QtWidgets.QWidget):
         self.spinbox_changed(0)
 
     def spinbox_changed(self, value):
-        (bytes, location) = self.file.getsample(value)
-        aac = AAC()
-        aac.parse(bytes, location, self.file.es_descriptor())
-
-        if value > 0:
-            (bytes, location) = self.file.getsample(value - 1)
-            prev_aac = AAC()
-            prev_aac.parse(bytes, location, self.file.es_descriptor())
-        else:
-            prev_aac = None
-
-        self.syntax_view.update_syntax(self.file.bytestream, aac.syntax_items())
-        self.syntax_view.set_highlight(location, len(bytes))
-
-        for aac_view in self.aac_views:
-            aac_view.set_aac(aac, prev_aac)
+        self.aac_analyzer.set_sample(value)
 
 class Analyzer:
     def __init__(self, stream):
@@ -500,5 +509,5 @@ class Analyzer:
     def analyze(self):
         views = []
         views.append(SyntaxView('MP4 File', self.stream, self.file.syntax_items()))
-        views.append(AACStreamView(self.file))
+        views.append(Mp4StreamView(self.file))
         return views
