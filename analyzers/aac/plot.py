@@ -152,17 +152,20 @@ class PlotView(QtWidgets.QWidget):
 
     def paintEvent(self, event):
         painter = QtGui.QPainter(self)
-        painter.drawRect(0, 0, self.width() - 1, self.height() - 1)
 
         for (i, window_plots) in enumerate(self.plots):
             rect = QtCore.QRect(self.width() * i / self.num_windows, 0, self.width() / self.num_windows, self.height())
             for plot in window_plots:
                 plot.draw(painter, rect)
 
-        window_pen = QtGui.QPen(QtGui.QBrush(QtGui.QColor(128, 128, 128)), 8)
+        window_pen = QtGui.QPen(QtGui.QColor(128, 128, 128), 8)
         painter.setPen(window_pen)
         for i in range(1, self.num_windows):
             x = self.width() * i / self.num_windows
             painter.drawLine(x, 0, x, self.height())
+
+        edge_pen = QtGui.QPen(QtGui.QColor(0, 0, 0), 1)
+        painter.setPen(edge_pen)
+        painter.drawRect(0, 0, self.width() - 1, self.height() - 1)
 
         painter.end()
