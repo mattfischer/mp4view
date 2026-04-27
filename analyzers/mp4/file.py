@@ -345,6 +345,46 @@ def parsebox(bytestream):
     box.syntax_item = bytestream.finish_syntax_item(box.box_name)
     return box
 
+class Track:
+    def __init__(self, file, track_number):
+        self.file = file
+        self.bytestream = file.bytestream
+        self.track_number = track_number
+
+    def es_descriptor(self):
+        tracks = self.file.findbox(MovieBox).findboxes(TrackBox)
+        track = tracks[self.track_number]
+        sample_table = track.findbox(MediaBox).findbox(MediaInformationBox).findbox(SampleTableBox)
+        esd_box = sample_table.findbox(SampleDescriptionBox).findbox(AudioSampleEntry).findbox(ESDBox)
+        return esd_box.descriptor
+
+    def numsamples(self):
+        tracks = self.file.findbox(MovieBox).findboxes(TrackBox)
+        track = tracks[self.track_number]
+        sample_table = track.findbox(MediaBox).findbox(MediaInformationBox).findbox(SampleTableBox)
+        sample_sizes = sample_table.findbox(SampleSizeBox)
+        return sample_sizes.sample_count
+
+    def getsample(self, idx):
+        tracks = self.file.findbox(MovieBox).findboxes(TrackBox)
+        track = tracks[self.track_number]
+        sample_table = track.findbox(MediaBox).findbox(MediaInformationBox).findbox(SampleTableBox)
+        sample_sizes = sample_table.findbox(SampleSizeBox)
+        sample_to_chunk = sample_table.findbox(SampleToChunkBox)
+        chunk_offsets = sample_table.findbox(ChunkOffsetBox)
+
+        size = sample_sizes.get_size(idx)
+        (chunk, first_sample) = sample_to_chunk.get_chunk(idx)
+        skip_size = 0
+        for sample in range(first_sample, idx):
+            skip_size += sample_sizes.get_size(sample)
+        offset = chunk_offsets.get_offset(chunk)
+        location = offset + skip_size
+        
+        self.file.bytestream.file.seek(location)
+        bytes = self.file.bytestream.file.read(size)
+        return (bytes, location)
+
 class File:
     def __init__(self, bytestream):
         self.bytestream = bytestream
@@ -368,36 +408,5 @@ class File:
     def findbox(self, cls):
         return self.findboxes(cls)[0]
 
-    def es_descriptor(self):
-        tracks = self.findbox(MovieBox).findboxes(TrackBox)
-        track = tracks[0]
-        sample_table = track.findbox(MediaBox).findbox(MediaInformationBox).findbox(SampleTableBox)
-        esd_box = sample_table.findbox(SampleDescriptionBox).findbox(AudioSampleEntry).findbox(ESDBox)
-        return esd_box.descriptor
-
-    def numsamples(self):
-        tracks = self.findbox(MovieBox).findboxes(TrackBox)
-        track = tracks[0]
-        sample_table = track.findbox(MediaBox).findbox(MediaInformationBox).findbox(SampleTableBox)
-        sample_sizes = sample_table.findbox(SampleSizeBox)
-        return sample_sizes.sample_count
-
-    def getsample(self, idx):
-        tracks = self.findbox(MovieBox).findboxes(TrackBox)
-        track = tracks[0]
-        sample_table = track.findbox(MediaBox).findbox(MediaInformationBox).findbox(SampleTableBox)
-        sample_sizes = sample_table.findbox(SampleSizeBox)
-        sample_to_chunk = sample_table.findbox(SampleToChunkBox)
-        chunk_offsets = sample_table.findbox(ChunkOffsetBox)
-
-        size = sample_sizes.get_size(idx)
-        (chunk, first_sample) = sample_to_chunk.get_chunk(idx)
-        skip_size = 0
-        for sample in range(first_sample, idx):
-            skip_size += sample_sizes.get_size(sample)
-        offset = chunk_offsets.get_offset(chunk)
-        location = offset + skip_size
-        
-        self.bytestream.file.seek(location)
-        bytes = self.bytestream.file.read(size)
-        return (bytes, location)
+    def track(self, track_number):
+        return Track(self, track_number)

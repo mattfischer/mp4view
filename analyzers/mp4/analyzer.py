@@ -6,16 +6,16 @@ import syntax
 from PySide2 import QtWidgets, QtGui, QtCore
 
 class StreamView(QtWidgets.QWidget):
-    def __init__(self, file):
+    def __init__(self, track):
         super(StreamView, self).__init__()
         self.title = 'AAC Streams'
-        self.file = file
-        self.aac_analyzer = analyzers.aac.Analyzer(file)
+        self.track = track
+        self.aac_analyzer = analyzers.aac.Analyzer(track)
 
         hlayout = QtWidgets.QHBoxLayout()
         hlayout.addWidget(QtWidgets.QLabel('Sample:'))
         self.spinbox = QtWidgets.QSpinBox()
-        self.spinbox.setMaximum(self.file.numsamples())
+        self.spinbox.setMaximum(self.track.numsamples())
         self.spinbox.valueChanged.connect(self.spinbox_changed)
         hlayout.addWidget(self.spinbox)
 
@@ -43,5 +43,5 @@ class Analyzer:
     def get_views(self):
         views = []
         views.append(syntax.SyntaxView('MP4 File', self.stream, self.file.syntax_items()))
-        views.append(StreamView(self.file))
+        views.append(StreamView(self.file.track(0)))
         return views

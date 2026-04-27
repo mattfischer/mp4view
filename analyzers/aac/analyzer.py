@@ -224,8 +224,8 @@ class PerChannelView(QtWidgets.QScrollArea):
         self.widget.setFixedSize(event.size().width(), event.size().width())
 
 class Analyzer:
-    def __init__(self, mp4_file):
-        self.mp4_file = mp4_file
+    def __init__(self, track):
+        self.track = track
         self.syntax_view = syntax.SyntaxView('Syntax')
 
         self.aac_views = [
@@ -241,18 +241,18 @@ class Analyzer:
         return [self.syntax_view] + self.aac_views
 
     def set_sample(self, sample):
-        (bytes, location) = self.mp4_file.getsample(sample)
+        (bytes, location) = self.track.getsample(sample)
         aac = block.RawDataBlock()
-        aac.parse(bytes, location, self.mp4_file.es_descriptor())
+        aac.parse(bytes, location, self.track.es_descriptor())
 
         if sample > 0:
-            (prev_bytes, prev_location) = self.mp4_file.getsample(sample - 1)
+            (prev_bytes, prev_location) = self.track.getsample(sample - 1)
             prev_aac = block.RawDataBlock()
-            prev_aac.parse(prev_bytes, prev_location, self.mp4_file.es_descriptor())
+            prev_aac.parse(prev_bytes, prev_location, self.track.es_descriptor())
         else:
             prev_aac = None
 
-        self.syntax_view.update_syntax(self.mp4_file.bytestream, aac.syntax_items())
+        self.syntax_view.update_syntax(self.track.bytestream, aac.syntax_items())
         self.syntax_view.set_highlight(location, len(bytes))
 
         for aac_view in self.aac_views:
