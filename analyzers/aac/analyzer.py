@@ -6,8 +6,8 @@ from PySide2 import QtWidgets
 SCALEFACTOR_COLOR = (192, 192, 192)
 INTENSITY_COLOR = (192, 192, 0)
 
-MS_COLOR = (128, 176, 224)
-LR_COLOR = (128, 224, 176)
+LINE_COLOR = (128, 176, 224)
+MS_COLOR = (128, 224, 176)
 
 TNS_COLOR = (192, 192, 192)
 
@@ -28,7 +28,7 @@ class SpectrumScalefactorPlot(plot.PlotView):
         v_axis_spectrum = plot.AxisLinearSigned(32) 
         win_idx = 0
         scalefactor_colors = [SCALEFACTOR_COLOR, INTENSITY_COLOR]
-        spectrum_colors = [MS_COLOR, LR_COLOR]
+        spectrum_colors = [LINE_COLOR, MS_COLOR]
         for g in range(ics.params.num_window_groups):
             for win in range(ics.params.window_group_length[g]):
                 scalefactor_bars = []
@@ -64,7 +64,7 @@ class RescaledSpectrumPlot(plot.PlotView):
         h_axis = plot.AxisLinearUnsigned(ics.params.window_length)
         v_axis = plot.AxisLogarithmicSigned(7) 
         win_idx = 0
-        colors = [MS_COLOR, LR_COLOR]
+        colors = [LINE_COLOR, MS_COLOR]
         for g in range(ics.params.num_window_groups):
             for win in range(ics.params.window_group_length[g]):
                 points = []
@@ -95,7 +95,7 @@ class SpectrumPlot(plot.PlotView):
         h_axis = plot.AxisLinearUnsigned(ics.params.window_length)
         v_axis = plot.AxisLogarithmicSigned(7) 
         win_idx = 0
-        colors = [MS_COLOR]
+        colors = [LINE_COLOR]
         for g in range(ics.params.num_window_groups):
             for win in range(ics.params.window_group_length[g]):
                 points = []
@@ -122,7 +122,7 @@ class TNSSpectrumPlot(plot.PlotView):
         v_axis_tns = plot.AxisLinearUnsigned(1) 
         win_idx = 0
         tns_colors = [TNS_COLOR]
-        spectrum_colors = [MS_COLOR]
+        spectrum_colors = [LINE_COLOR]
         for g in range(ics.params.num_window_groups):
             for win in range(ics.params.window_group_length[g]):
                 bottom = ics.ics_info.max_sfb
@@ -167,7 +167,7 @@ class RawSamplesPlot(plot.PlotView):
         v_axis_samples = plot.AxisLinearSigned(32767)
         v_axis_window = plot.AxisLinearUnsigned(1)
         win_idx = 0
-        sample_colors = [MS_COLOR]
+        sample_colors = [LINE_COLOR]
         window_colors = [WINDOW_COLOR]
         for g in range(ics.params.num_window_groups):
             for win in range(ics.params.window_group_length[g]):
@@ -202,7 +202,7 @@ class FinalSamplesPlot(plot.PlotView):
         h_axis = plot.AxisLinearUnsigned(1024)
         v_axis = plot.AxisLinearSigned(32767)
         win_idx = 0
-        colors = [MS_COLOR]
+        colors = [LINE_COLOR]
         points = []
         for i in range(1024):
             value = samples[i] + prev_samples[1024 + i]
