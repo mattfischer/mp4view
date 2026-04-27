@@ -1,5 +1,5 @@
 import stream
-from . import aac_tables
+from . import tables
 import math
 from syntax import format_enum
 
@@ -75,13 +75,13 @@ def compile_huffman(cb):
     add_node(tree, root)
     return tree
 
-spect_codebook = [0] + [compile_huffman(cb) for cb in (aac_tables.spectral_cb_1, aac_tables.spectral_cb_2, aac_tables.spectral_cb_3, aac_tables.spectral_cb_4, aac_tables.spectral_cb_5, aac_tables.spectral_cb_6, aac_tables.spectral_cb_7, aac_tables.spectral_cb_8, aac_tables.spectral_cb_9, aac_tables.spectral_cb_10, aac_tables.spectral_cb_11)]
-sf_codebook = compile_huffman(aac_tables.scalefactor_cb)
+spect_codebook = [0] + [compile_huffman(cb) for cb in (tables.spectral_cb_1, tables.spectral_cb_2, tables.spectral_cb_3, tables.spectral_cb_4, tables.spectral_cb_5, tables.spectral_cb_6, tables.spectral_cb_7, tables.spectral_cb_8, tables.spectral_cb_9, tables.spectral_cb_10, tables.spectral_cb_11)]
+sf_codebook = compile_huffman(tables.scalefactor_cb)
 
 class ParseObject:
     pass
 
-class AAC:
+class RawDataBlock:
     def parse(self, bytes, byte_start, es_descriptor):
         self.bitstream = stream.Bitstream(bytes, byte_start)
         self.parsed_block = self.parse_raw_data_block(es_descriptor)
@@ -176,17 +176,17 @@ class AAC:
         fs_index = es_descriptor.decConfigDescr.decSpecificInfo.samplingFrequencyIndex
         frameLengthFlag = es_descriptor.decConfigDescr.decSpecificInfo.specificConfig.frameLengthFlag
         if frameLengthFlag == 0:
-            num_swb_long_window = aac_tables.num_swb_long_window_2048
-            swb_offset_long_window = aac_tables.swb_offset_long_window_2048
-            num_swb_short_window = aac_tables.num_swb_short_window_256
-            swb_offset_short_window = aac_tables.swb_offset_short_window_256
+            num_swb_long_window = tables.num_swb_long_window_2048
+            swb_offset_long_window = tables.swb_offset_long_window_2048
+            num_swb_short_window = tables.num_swb_short_window_256
+            swb_offset_short_window = tables.swb_offset_short_window_256
             long_window_length = 1024
             short_window_length = 128
         else:
-            num_swb_long_window = aac_tables.num_swb_long_window_1920
-            swb_offset_long_window = aac_tables.swb_offset_long_window_1920
-            num_swb_short_window = aac_tables.num_swb_short_window_240
-            swb_offset_short_window = aac_tables.swb_offset_short_window_240
+            num_swb_long_window = tables.num_swb_long_window_1920
+            swb_offset_long_window = tables.swb_offset_long_window_1920
+            num_swb_short_window = tables.num_swb_short_window_240
+            swb_offset_short_window = tables.swb_offset_short_window_240
             long_window_length = 960
             short_window_length = 120
 

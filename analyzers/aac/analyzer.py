@@ -1,9 +1,7 @@
 import math
 
-from .aac import AAC, INTENSITY_HCB, INTENSITY_HCB2
-from .aac import ONLY_LONG_SEQUENCE, LONG_START_SEQUENCE, EIGHT_SHORT_SEQUENCE, LONG_STOP_SEQUENCE
-
-from syntax import SyntaxView
+from . import block
+import syntax
 
 from PySide2 import QtWidgets, QtGui, QtCore
 
@@ -196,7 +194,7 @@ class SpectrumScalefactorPlot(PlotView):
                     start = ics.params.swb_offset[sfb]
                     end = ics.params.swb_offset[sfb+1]
                     val = ics.scale_factor_data.sf[g][sfb] - 100
-                    is_intensity = ics.section_data.sfb_cb[g][sfb] in (INTENSITY_HCB, INTENSITY_HCB2)
+                    is_intensity = ics.section_data.sfb_cb[g][sfb] in (block.INTENSITY_HCB, block.INTENSITY_HCB2)
                     color = 1 if is_intensity else 0
                     scalefactor_bars.append((color, end - start, val))
 
@@ -349,7 +347,6 @@ class FinalSamplesPlot(PlotView):
 
     def set_aac(self, aac, prev_aac):
         cpe = aac.parsed_block.cpe
-        ics = cpe.ics[self.channel]
         self.reset()
 
         samples = aac.windowed_samples[self.channel]
@@ -396,7 +393,7 @@ class PerChannelView(QtWidgets.QScrollArea):
 class Analyzer:
     def __init__(self, mp4_file):
         self.mp4_file = mp4_file
-        self.syntax_view = SyntaxView('Syntax')
+        self.syntax_view = syntax.SyntaxView('Syntax')
 
         self.aac_views = [
             PerChannelView(SpectrumScalefactorPlot, 'Raw Spectrum/Scalefactors'),
@@ -412,12 +409,12 @@ class Analyzer:
 
     def set_sample(self, sample):
         (bytes, location) = self.mp4_file.getsample(sample)
-        aac = AAC()
+        aac = block.RawDataBlock()
         aac.parse(bytes, location, self.mp4_file.es_descriptor())
 
         if sample > 0:
             (prev_bytes, prev_location) = self.mp4_file.getsample(sample - 1)
-            prev_aac = AAC()
+            prev_aac = block.RawDataBlock()
             prev_aac.parse(prev_bytes, prev_location, self.mp4_file.es_descriptor())
         else:
             prev_aac = None
