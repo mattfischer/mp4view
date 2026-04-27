@@ -107,9 +107,6 @@ class TNSSpectrumPlot(plot.PlotView):
         ics = cpe.ics[self.channel]
         self.set_num_windows(ics.params.num_windows)
 
-        if not hasattr(ics, 'tns_data'):
-            return
-
         h_axis = plot.AxisLinearUnsigned(ics.params.window_length)
         v_axis_spectrum = plot.AxisLogarithmicSigned(7)
         v_axis_tns = plot.AxisLinearUnsigned(1) 
@@ -120,21 +117,25 @@ class TNSSpectrumPlot(plot.PlotView):
             for win in range(ics.params.window_group_length[g]):
                 bottom = ics.ics_info.max_sfb
                 tns_bars = []
-                for f in range(ics.tns_data.n_filt[win_idx]):
-                    top = bottom
-                    bottom = max(top - ics.tns_data.length[win_idx][f], 0)
-                    tns_order = ics.tns_data.order[win_idx][f]
-                    sfb_start = ics.params.swb_offset[bottom]
-                    sfb_end = ics.params.swb_offset[top]
-                    value = 1 if tns_order > 0 else 0
-                    tns_bars.insert(0, (0, sfb_end - sfb_start, value))
+                if hasattr(ics, 'tns_data'):
+                    spectrum = aac.tns_spec
+                    for f in range(ics.tns_data.n_filt[win_idx]):
+                        top = bottom
+                        bottom = max(top - ics.tns_data.length[win_idx][f], 0)
+                        tns_order = ics.tns_data.order[win_idx][f]
+                        sfb_start = ics.params.swb_offset[bottom]
+                        sfb_end = ics.params.swb_offset[top]
+                        value = 1 if tns_order > 0 else 0
+                        tns_bars.insert(0, (0, sfb_end - sfb_start, value))
 
-                if bottom > 0:
-                    tns_bars.insert(0, (0, bottom, 0))
+                    if bottom > 0:
+                        tns_bars.insert(0, (0, bottom, 0))
+                else:
+                    spectrum = aac.spec
 
                 spectrum_points = []
                 for i in range(ics.params.window_length):
-                    value = aac.tns_spec[self.channel][g][win][i]
+                    value = spectrum[self.channel][g][win][i]
                     spectrum_points.append((0, i, value))
 
                 self.add_plot(win_idx, plot.PlotBar(h_axis, v_axis_tns, tns_colors, tns_bars))
