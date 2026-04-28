@@ -1,7 +1,8 @@
 from . import block, plot
 import syntax
 
-from PySide2 import QtWidgets
+from PySide2 import QtWidgets, QtGui, QtCore
+import numpy as np
 
 SCALEFACTOR_COLOR = (192, 184, 192)
 INTENSITY_COLOR = (224, 192, 64)
@@ -268,3 +269,98 @@ class Analyzer:
 
         for aac_view in self.aac_views:
             aac_view.set_aac(aac, prev_aac)
+
+class WaveformPlot(QtWidgets.QWidget):
+    def __init__(self, track):
+        super(WaveformPlot, self).__init__()
+        self.track = track
+        self.setMinimumHeight(200)
+        self.l_values = [0] * 400
+        self.r_values = [0] * 400
+        self.fill_range = (0, len(self.l_values))
+        self.timer = QtCore.QTimer()
+        self.timer.setSingleShot(True)
+        self.timer.setInterval(0)
+        self.timer.timeout.connect(self.refill_one_value)
+
+        self.refill_values()
+
+    def refill_values(self):
+        if self.fill_range:
+            self.timer.start()
+
+    def refill_one_value(self):
+        (start, end) = self.fill_range
+        
+        (bytes, location) = self.track.getsample(start * self.track.numsamples() // len(self.l_values))
+        aac = block.RawDataBlock()
+        aac.parse(bytes, location, self.track.es_descriptor())
+        samples = aac.windowed_samples[0]
+        val = np.sum(np.abs(samples)) / 1024
+        self.l_values[start] = val
+        samples = aac.windowed_samples[1]
+        val = np.sum(np.abs(samples)) / 1024
+        self.r_values[start] = val
+        if start < end - 1:
+            self.fill_range = (start + 1, end)
+            self.timer.start()
+        else:
+            self.fill_range = None
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QtGui.QPainter(self)
+
+        brush = QtGui.QBrush(QtGui.QColor(64, 64, 64))
+        for i in range(len(self.l_values)):
+            x = i * self.width() / len(self.l_values)
+            w = self.width() / len(self.l_values) + 1
+            
+            val = self.l_values[i]
+            h = self.height() / 2 * val / 32767
+            y = self.height() / 4 - h / 2 
+            painter.fillRect(x, y, w, h, brush)
+
+            val = self.r_values[i]
+            h = self.height() / 2 * val / 32767
+            y = self.height() * 3 / 4 - h / 2 
+            painter.fillRect(x, y, w, h, brush)
+
+        edge_pen = QtGui.QPen(QtGui.QColor(0, 0, 0), 1)
+        painter.setPen(edge_pen)
+        painter.drawRect(0, 0, self.width() - 1, self.height() - 1)
+
+        painter.end()
+
+class StreamView(QtWidgets.QWidget):
+    def __init__(self, track):
+        super(StreamView, self).__init__()
+        self.title = 'AAC Streams'
+        self.track = track
+        self.aac_analyzer = Analyzer(track)
+
+        hlayout = QtWidgets.QHBoxLayout()
+        hlayout.addWidget(QtWidgets.QLabel('Sample:'))
+        self.spinbox = QtWidgets.QSpinBox()
+        self.spinbox.setMaximum(self.track.numsamples())
+        self.spinbox.valueChanged.connect(self.spinbox_changed)
+        hlayout.addWidget(self.spinbox)
+
+        vlayout = QtWidgets.QVBoxLayout()
+        vlayout.addLayout(hlayout)
+
+        self.waveform_plot = WaveformPlot(track)
+        vlayout.addWidget(self.waveform_plot)
+
+        tabs = QtWidgets.QTabWidget()
+        for view in self.aac_analyzer.get_views():
+            tabs.addTab(view, view.title)
+
+        vlayout.addWidget(tabs)
+
+        self.setLayout(vlayout)
+
+        self.spinbox_changed(0)
+
+    def spinbox_changed(self, value):
+        self.aac_analyzer.set_sample(value)
