@@ -58,6 +58,21 @@ class Bitstream:
         
         return val
 
+    def getbit(self):
+        start = self.pos >> 3
+        mod = self.pos & 7
+        val = self.bytes[start]
+
+        shift = 7 - mod
+        val >>= shift
+
+        mask = 1
+        val &= mask
+
+        self.pos += 1
+       
+        return val
+
     def getstring(self, length, name=None):
         start = int(self.pos / 8)
         string = self.bytes[start:start+length].decode('utf-8')

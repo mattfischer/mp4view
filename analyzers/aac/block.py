@@ -73,10 +73,26 @@ def compile_huffman(cb):
                 tree[index + n] = -add_node(tree, child)
         return index
     add_node(tree, root)
-    return tree
+    return np.array(tree)
+
+def construct_window(window_sequence):
+    def sin_win(n, N):
+        return math.sin((math.pi / N) * (n + 1/2))
+
+    if window_sequence == ONLY_LONG_SEQUENCE:
+        window = [sin_win(n, 2048) for n in range(2048)]
+    elif window_sequence == LONG_START_SEQUENCE:
+        window = [sin_win(n, 2048) for n in range(1024)] + [1] * 448 + [sin_win(n + 128, 256) for n in range(128)] + [0] * 448
+    elif window_sequence == EIGHT_SHORT_SEQUENCE:
+        window = [sin_win(n, 256) for n in range(256)]
+    elif window_sequence == LONG_STOP_SEQUENCE:
+        window = [0] * 448 + [sin_win(n, 256) for n in range(128)] + [1] * 448 + [sin_win(n + 1024, 2048) for n in range(1024)]
+
+    return np.array(window)
 
 spect_codebook = [0] + [compile_huffman(cb) for cb in (tables.spectral_cb_1, tables.spectral_cb_2, tables.spectral_cb_3, tables.spectral_cb_4, tables.spectral_cb_5, tables.spectral_cb_6, tables.spectral_cb_7, tables.spectral_cb_8, tables.spectral_cb_9, tables.spectral_cb_10, tables.spectral_cb_11)]
 sf_codebook = compile_huffman(tables.scalefactor_cb)
+windows = [construct_window(window_sequence) for window_sequence in range(4)]
 
 class ParseObject:
     pass
@@ -322,7 +338,7 @@ class RawDataBlock:
                 spectral_data.spec[g][w] = [None] * ics_info.max_sfb
                 for sfb in range(ics_info.max_sfb):
                     num_bins = params.swb_offset[sfb + 1] - params.swb_offset[sfb]
-                    spectral_data.spec[g][w][sfb] = [0] * num_bins
+                    spectral_data.spec[g][w][sfb] = np.zeros(num_bins)
 
             for i in range(section_data.num_sec[g]):
                 sect_cb = section_data.sect_cb[g][i]
@@ -363,7 +379,7 @@ class RawDataBlock:
                                 if unsigned_cb[sect_cb]:
                                     for n in range(dim):
                                         if val[n] != 0:
-                                            s = self.bitstream.getbits(1)
+                                            s = self.bitstream.getbit()
                                             sign[n] = s
 
                                 if sect_cb == ESC_HCB:
@@ -451,7 +467,7 @@ class RawDataBlock:
     def decode_huffman(self, codebook):
         index = 0
         while True:
-            bit = self.bitstream.getbits(1)
+            bit = self.bitstream.getbit()
             val = codebook[index + bit]
             if val >= 0:
                 return val
@@ -461,7 +477,7 @@ class RawDataBlock:
     def decode_escape(self):
         n = 0
         while True:
-            bit = self.bitstream.getbits(1)
+            bit = self.bitstream.getbit()
             if bit:
                 n += 1
             else:
@@ -489,7 +505,7 @@ class RawDataBlock:
                 for w in range(ics.params.window_group_length[g]):
                     x_quant[i][g][w] = [0] * ics.params.window_length
                     for sfb in range(ics.ics_info.max_sfb):
-                        x_quant[i][g][w][sfb] = ics.spectral_data.spec[g][w][sfb]
+                        x_quant[i][g][w][sfb] = ics.spectral_data.spec[g][w][sfb].copy()
             
             if ics.pulse_data_present:
                 pulse_data = ics.pulse_data
@@ -514,13 +530,10 @@ class RawDataBlock:
             for g in range(ics.params.num_window_groups):
                 x_invquant[i][g] = [None] * ics.params.window_group_length[g]
                 for w in range(ics.params.window_group_length[g]):
-                    x_invquant[i][g][w] = [0] * ics.params.window_length
+                    x_invquant[i][g][w] = [None] * ics.params.window_length
                     for sfb in range(ics.ics_info.max_sfb):
-                        num_bins = ics.params.swb_offset[sfb+1] - ics.params.swb_offset[sfb]
-                        x_invquant[i][g][w][sfb] = [0] * num_bins
-                        for b in range(num_bins):
-                            x = x_quant[i][g][w][sfb][b]
-                            x_invquant[i][g][w][sfb][b] = math.copysign(abs(float(x)) ** (4/3), x) 
+                        x_invquant[i][g][w][sfb] = np.copysign(np.power(np.abs(x_quant[i][g][w][sfb]), [4/3]), x_quant[i][g][w][sfb])
+
         return x_invquant
 
     def process_scalefactors(self, ics_list, x_invquant):
@@ -532,28 +545,35 @@ class RawDataBlock:
                 for w in range(ics.params.window_group_length[g]):
                     x_rescal[i][g][w] = [0] * ics.params.window_length
                     for sfb in range(ics.ics_info.max_sfb):
-                        num_bins = ics.params.swb_offset[sfb+1] - ics.params.swb_offset[sfb]
-                        x_rescal[i][g][w][sfb] = [0] * num_bins
                         gain = 2.0 ** (0.25 * (ics.scale_factor_data.sf[g][sfb] - 100))
-                        for b in range(num_bins):
-                            x_rescal[i][g][w][sfb][b] = gain * x_invquant[i][g][w][sfb][b]
+                        x_rescal[i][g][w][sfb] = np.multiply(gain, x_invquant[i][g][w][sfb])
+
         return x_rescal
 
     def process_joint_stereo(self, cpe, spec):
-        (l_spec, r_spec) = copy.deepcopy(spec)
+        params = cpe.params
+        ics_info = cpe.ics_info
+
+        l_spec = [None] * params.num_window_groups
+        r_spec = [None] * params.num_window_groups
+        for g in range(params.num_window_groups):
+            l_spec[g] = [None] * params.window_group_length[g]
+            r_spec[g] = [None] * params.window_group_length[g]
+            for w in range(params.window_group_length[g]):
+                l_spec[g][w] = [None] * ics_info.max_sfb
+                r_spec[g][w] = [None] * ics_info.max_sfb
+                for sfb in range(ics_info.max_sfb):
+                    l_spec[g][w][sfb] = spec[0][g][w][sfb].copy()
+                    r_spec[g][w][sfb] = spec[1][g][w][sfb].copy()
 
         if cpe.ms_mask_present >= 1:
-            params = cpe.params
-            ics_info = cpe.ics_info
             for g in range(params.num_window_groups):
                 for w in range(params.window_group_length[g]):
                     for sfb in range(ics_info.max_sfb):
                         if (cpe.ms_mask_present == 2 or cpe.ms_used[g][sfb]) and cpe.ics[1].section_data.sfb_cb[g][sfb] < 13:
-                            num_bins = params.swb_offset[sfb+1] - params.swb_offset[sfb]
-                            for b in range(num_bins):
-                                tmp = l_spec[g][w][sfb][b] - r_spec[g][w][sfb][b]
-                                l_spec[g][w][sfb][b] = l_spec[g][w][sfb][b] + r_spec[g][w][sfb][b]
-                                r_spec[g][w][sfb][b] = tmp
+                            tmp = l_spec[g][w][sfb] - r_spec[g][w][sfb]
+                            l_spec[g][w][sfb] += r_spec[g][w][sfb]
+                            r_spec[g][w][sfb] = tmp
         
         params = cpe.ics[1].params
         ics_info = cpe.ics[1].ics_info
@@ -565,9 +585,8 @@ class RawDataBlock:
                     invert_intensity = (1 - 2 * cpe.ms_used[g][sfb]) if cpe.ms_mask_present == 1 else 1
                     if is_intensity:
                         scale = is_intensity * invert_intensity * (0.5 ** (0.25 * cpe.ics[1].scale_factor_data.sf[g][sfb]))
-                        num_bins = params.swb_offset[sfb+1] - params.swb_offset[sfb]
-                        for b in range(num_bins):
-                            r_spec[g][w][sfb][b] = scale * l_spec[g][w][sfb][b]
+                        r_spec[g][w][sfb] = scale * l_spec[g][w][sfb]
+
         return (l_spec, r_spec)
 
     def flatten_spectrum(self, ics_list, spec):
@@ -579,11 +598,12 @@ class RawDataBlock:
             for g in range(params.num_window_groups):
                 flat[i][g] = [None] * params.window_group_length[g]
                 for w in range(params.window_group_length[g]):
-                    flat[i][g][w] = [0] * params.window_length
+                    flat[i][g][w] = np.zeros(params.window_length)
                     for sfb in range(ics_info.max_sfb):
-                        num_bins = params.swb_offset[sfb+1] - params.swb_offset[sfb]
-                        for b in range(num_bins):
-                            flat[i][g][w][params.swb_offset[sfb]+b] = spec[i][g][w][sfb][b]
+                        start = params.swb_offset[sfb]
+                        end = params.swb_offset[sfb+1]
+                        flat[i][g][w][start:end] = spec[i][g][w][sfb]
+
         spec = flat
 
         return spec
@@ -675,12 +695,10 @@ class RawDataBlock:
 
     def process_filterbank(self, ics_list, spec):
         samples = [None] * 2
-        windowed_samples = [None] * 2
         for i in range(2):
             params = ics_list[i].params
  
             samples[i] = [None] * params.num_window_groups
-            windowed_samples[i] = [0] * 2048
             for g in range(params.num_window_groups):
                 samples[i][g] = [None] * params.window_group_length[g]
                 for w in range(params.window_group_length[g]):
@@ -697,7 +715,7 @@ class RawDataBlock:
             params = ics_list[i].params
             ics_info = ics_list[i].ics_info
  
-            windowed_samples[i] = [0] * 2048
+            windowed_samples[i] = np.zeros(2048)
             for g in range(params.num_window_groups):
                 for w in range(params.window_group_length[g]):
                     start = 0
@@ -705,40 +723,14 @@ class RawDataBlock:
                         start = 448 + win_idx * 128
                     else:
                         start = 0
-                    for n in range(params.window_length * 2):
-                        windowed_samples[i][start + n] += samples[i][g][w][n] * self.window(ics_info.window_shape, ics_info.window_sequence, n)
 
+                    windowed_samples[i][start:start + params.window_length * 2] += np.multiply(samples[i][g][w], windows[ics_info.window_sequence])
                     win_idx += 1
 
         return windowed_samples
 
     def window(self, window_shape, window_sequence, n):
-        def sin_win(n, N):
-            return math.sin((math.pi / N) * (n + 1/2))
-
-        if window_sequence == ONLY_LONG_SEQUENCE:
-            w = sin_win(n, 2048)
-        elif window_sequence == LONG_START_SEQUENCE:
-            if n < 1024:
-                w = sin_win(n, 2048)
-            elif n < 1472:
-                w = 1
-            elif n < 1600:
-                w = sin_win(n + 128 - 1472, 256)
-            else:
-                w = 0
-        elif window_sequence == EIGHT_SHORT_SEQUENCE:
-            w = sin_win(n, 256)
-        elif window_sequence == LONG_STOP_SEQUENCE:
-            if n < 448:
-                w = 0
-            elif n <= 576:
-                w = sin_win(n - 448, 256)
-            elif n < 1024:
-                w = 1
-            else:
-                w = sin_win(n, 2048)
-        return w
+        return windows[window_sequence][n]
 
     def imdct(self, spectrum):
         idct = scipy.fft.idct(spectrum, type=4)
