@@ -2,7 +2,10 @@ from . import block, plot
 import syntax
 
 from PySide2 import QtWidgets, QtGui, QtCore
+from PySide2.QtCore import Qt
+
 import numpy as np
+import random
 
 SCALEFACTOR_COLOR = (192, 184, 192)
 INTENSITY_COLOR = (224, 192, 64)
@@ -275,62 +278,104 @@ class WaveformPlot(QtWidgets.QWidget):
         super(WaveformPlot, self).__init__()
         self.track = track
         self.setMinimumHeight(200)
-        self.l_values = [0] * 400
-        self.r_values = [0] * 400
-        self.fill_range = (0, len(self.l_values))
+        self.sample_start = 0.0
+        self.sample_zoom = 1.0
+
+        self.block_values = [None] * track.numsamples()
         self.timer = QtCore.QTimer()
         self.timer.setSingleShot(True)
         self.timer.setInterval(0)
-        self.timer.timeout.connect(self.refill_one_value)
+        self.timer.timeout.connect(self.populate_one_block)
+        self.timer.start()
 
-        self.refill_values()
+        for i in range(20):
+            self.populate_block(i * track.numsamples() // 20)
 
-    def refill_values(self):
-        if self.fill_range:
+    def populate_one_block(self):
+        center = random.randint(0, self.width())
+
+        sample = 0
+        for i in range(self.width()):
+            if center + i < self.width():
+                s = self.sample_for_pixel(center + i)
+                if self.block_values[s] is None:
+                    sample = s
+                    break
+            elif center - i >= 0:
+                s = self.sample_for_pixel(center - i)
+                if self.block_values[s] is None:
+                    sample = s
+                    break
+            else:
+                break
+
+        if self.block_values[sample] is None:
+            self.populate_block(sample)
+            self.update()
             self.timer.start()
 
-    def refill_one_value(self):
-        (start, end) = self.fill_range
-        
-        (bytes, location) = self.track.getsample(start * self.track.numsamples() // len(self.l_values))
+    def populate_block(self, index):
+        (bytes, location) = self.track.getsample(index)
         aac = block.RawDataBlock()
         aac.parse(bytes, location, self.track.es_descriptor())
-        samples = aac.windowed_samples[0]
-        val = np.sum(np.abs(samples)) / 1024
-        self.l_values[start] = val
-        samples = aac.windowed_samples[1]
-        val = np.sum(np.abs(samples)) / 1024
-        self.r_values[start] = val
-        if start < end - 1:
-            self.fill_range = (start + 1, end)
-            self.timer.start()
-        else:
-            self.fill_range = None
-        self.update()
+        l_val = np.sum(np.abs(aac.windowed_samples[0])) / 1024
+        r_val = np.sum(np.abs(aac.windowed_samples[1])) / 1024
+        self.block_values[index] = (l_val, r_val)
 
     def paintEvent(self, event):
         painter = QtGui.QPainter(self)
 
-        brush = QtGui.QBrush(QtGui.QColor(64, 64, 64))
-        for i in range(len(self.l_values)):
-            x = i * self.width() / len(self.l_values)
-            w = self.width() / len(self.l_values) + 1
-            
-            val = self.l_values[i]
-            h = self.height() / 2 * val / 32767
-            y = self.height() / 4 - h / 2 
-            painter.fillRect(x, y, w, h, brush)
+        brush = QtGui.QBrush(QtGui.QColor(*LINE_COLOR))
+        for x in range(self.width()):
+            sample = self.sample_for_pixel(x)
+            while sample > 0 and self.block_values[sample] is None:
+                sample -= 1
 
-            val = self.r_values[i]
-            h = self.height() / 2 * val / 32767
+            if self.block_values[sample] is None:
+                continue
+
+            (l_val, r_val) = self.block_values[sample]
+
+            h = self.height() / 2 * l_val / 32767
+            y = self.height() / 4 - h / 2 
+            painter.fillRect(x, y, 1, h, brush)
+
+            h = self.height() / 2 * r_val / 32767
             y = self.height() * 3 / 4 - h / 2 
-            painter.fillRect(x, y, w, h, brush)
+            painter.fillRect(x, y, 1, h, brush)
 
         edge_pen = QtGui.QPen(QtGui.QColor(0, 0, 0), 1)
         painter.setPen(edge_pen)
         painter.drawRect(0, 0, self.width() - 1, self.height() - 1)
 
         painter.end()
+
+    def wheelEvent(self, event):
+        if event.modifiers() & Qt.ShiftModifier:
+            delta = self.track.numsamples() / (10 * self.sample_zoom)
+            max_start = self.track.numsamples() * (1 - 1/self.sample_zoom)
+            if event.angleDelta().y() > 0:
+                self.sample_start = min(self.sample_start + delta, max_start)
+            else:
+                self.sample_start = max(self.sample_start - delta, 0)
+        else:
+            cursor_sample = self.sample_for_pixel(event.position().x())
+            if event.angleDelta().y() > 0:
+                self.sample_zoom *= 1.25
+            else:
+                self.sample_zoom = max(self.sample_zoom / 1.25, 1.0)
+            self.sample_start = cursor_sample - event.position().x() * self.track.numsamples() / (self.sample_zoom * self.width())
+            max_start = self.track.numsamples() * (1 - 1/self.sample_zoom)
+            self.sample_start = max(min(self.sample_start, max_start), 0)
+
+        self.update()
+        self.timer.start()
+
+    def pixel_for_sample(self, s):
+        return int((s - self.sample_start) * self.sample_zoom * self.width() / self.track.numsamples())
+
+    def sample_for_pixel(self, x):
+        return int(x * self.track.numsamples() / (self.sample_zoom * self.width()) + self.sample_start)
 
 class StreamView(QtWidgets.QWidget):
     def __init__(self, track):
