@@ -282,6 +282,9 @@ class WaveformPlot(QtWidgets.QWidget):
         self.sample_zoom = 1.0
 
         self.block_values = [None] * track.numsamples()
+        self.waveform_values = np.zeros([1024 * 100, 2])
+        self.waveform_start = 0
+        self.waveform_valid = False
         self.timer = QtCore.QTimer()
         self.timer.setSingleShot(True)
         self.timer.setInterval(0)
@@ -297,12 +300,12 @@ class WaveformPlot(QtWidgets.QWidget):
         sample = 0
         for i in range(self.width()):
             if center + i < self.width():
-                s = self.sample_for_pixel(center + i)
+                s = int(self.sample_for_pixel(center + i))
                 if self.block_values[s] is None:
                     sample = s
                     break
             elif center - i >= 0:
-                s = self.sample_for_pixel(center - i)
+                s = int(self.sample_for_pixel(center - i))
                 if self.block_values[s] is None:
                     sample = s
                     break
@@ -325,24 +328,44 @@ class WaveformPlot(QtWidgets.QWidget):
     def paintEvent(self, event):
         painter = QtGui.QPainter(self)
 
-        brush = QtGui.QBrush(QtGui.QColor(*LINE_COLOR))
-        for x in range(self.width()):
-            sample = self.sample_for_pixel(x)
-            while sample > 0 and self.block_values[sample] is None:
-                sample -= 1
+        if not self.waveform_valid or self.track.numsamples() / self.sample_zoom >= len(self.waveform_values) // 1024:
+            brush = QtGui.QBrush(QtGui.QColor(*LINE_COLOR))
+            for x in range(self.width()):
+                sample = int(self.sample_for_pixel(x))
+                while sample > 0 and self.block_values[sample] is None:
+                    sample -= 1
 
-            if self.block_values[sample] is None:
-                continue
+                if self.block_values[sample] is None:
+                    continue
 
-            (l_val, r_val) = self.block_values[sample]
+                (l_val, r_val) = self.block_values[sample]
 
-            h = self.height() / 2 * l_val / 32767
-            y = self.height() / 4 - h / 2 
-            painter.fillRect(x, y, 1, h, brush)
+                h = self.height() / 2 * l_val / 32767
+                y = self.height() / 4 - h / 2 
+                painter.fillRect(x, y, 1, h, brush)
 
-            h = self.height() / 2 * r_val / 32767
-            y = self.height() * 3 / 4 - h / 2 
-            painter.fillRect(x, y, 1, h, brush)
+                h = self.height() / 2 * r_val / 32767
+                y = self.height() * 3 / 4 - h / 2 
+                painter.fillRect(x, y, 1, h, brush)
+        else:
+            pen = QtGui.QPen(QtGui.QColor(*LINE_COLOR))
+            painter.setPen(pen)
+            prev = (0, 0)
+            for x in range(self.width()):
+                sample = self.sample_for_pixel(x)
+                i = int((sample - self.waveform_start) * 1024)
+                (l_val, r_val) = self.waveform_values[i]
+
+                h = self.height() / 2 * l_val / 32767
+                y_l = self.height() / 4 - h / 2 
+                
+                h = self.height() / 2 * r_val / 32767
+                y_r = self.height() * 3 / 4 - h / 2 
+                if x > 0:
+                    (prev_l, prev_r) = prev
+                    painter.drawLine(x-1, prev_l, x, y_l)
+                    painter.drawLine(x-1, prev_r, x, y_r)
+                prev = (y_l, y_r)
 
         edge_pen = QtGui.QPen(QtGui.QColor(0, 0, 0), 1)
         painter.setPen(edge_pen)
@@ -370,12 +393,56 @@ class WaveformPlot(QtWidgets.QWidget):
 
         self.update()
         self.timer.start()
+        self.update_waveform()
+
+    def update_waveform(self):
+        max_block = len(self.waveform_values) // 1024
+
+        if self.track.numsamples() / self.sample_zoom >= max_block:
+            return
+
+        update_range = (-1, max_block)
+        if self.waveform_valid:
+            shift = int(self.sample_start) - self.waveform_start
+            if shift > 0 and shift < max_block:
+                shift_left = shift
+                shift_left_samples = shift_left * 1024
+                self.waveform_values[0:-shift_left_samples] = self.waveform_values[shift_left_samples:]
+                self.waveform_values[-shift_left_samples:] = np.zeros([shift_left_samples, 2])
+                update_range = (max_block - shift_left - 1, max_block)
+            elif shift < 0 and shift > -max_block:
+                shift_right = -shift
+                shift_right_samples = shift_right * 1024
+                self.waveform_values[shift_right_samples:] = self.waveform_values[0:-shift_right_samples]
+                self.waveform_values[0:shift_right_samples] = np.zeros([shift_right_samples, 2])
+                update_range = (-1, shift_right)
+            elif shift == 0:
+                update_range = (0, 0)
+        self.waveform_start = int(self.sample_start)
+
+        for i in range(*update_range):
+            (bytes, location) = self.track.getsample(i + self.waveform_start)
+            aac = block.RawDataBlock()
+            aac.parse(bytes, location, self.track.es_descriptor())
+            if i == update_range[0]:
+                start = i * 1024 + 1024
+                self.waveform_values[start:start+1024, 0] += aac.windowed_samples[0][1024:]
+                self.waveform_values[start:start+1024, 1] += aac.windowed_samples[1][1024:]
+            elif i == update_range[1] - 1:
+                start = i * 1024
+                self.waveform_values[start:start+1024, 0] += aac.windowed_samples[0][:1024]
+                self.waveform_values[start:start+1024, 1] += aac.windowed_samples[1][:1024]
+            else:
+                start = i * 1024
+                self.waveform_values[start:start+2048, 0] += aac.windowed_samples[0]
+                self.waveform_values[start:start+2048, 1] += aac.windowed_samples[1]
+        self.waveform_valid = True
 
     def pixel_for_sample(self, s):
         return int((s - self.sample_start) * self.sample_zoom * self.width() / self.track.numsamples())
 
     def sample_for_pixel(self, x):
-        return int(x * self.track.numsamples() / (self.sample_zoom * self.width()) + self.sample_start)
+        return x * self.track.numsamples() / (self.sample_zoom * self.width()) + self.sample_start
 
 class StreamView(QtWidgets.QWidget):
     def __init__(self, track):
