@@ -100,6 +100,7 @@ class SyntaxView(QtWidgets.QWidget):
 
     def set_highlight(self, start, size):
         self.hexdump_view.set_highlight(start, start + size)
+        self.hexdump_view.ensure_visible(start)
 
     def on_item_clicked(self, index):
         item = index.internalPointer()

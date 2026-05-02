@@ -278,8 +278,12 @@ class WaveformPlot(QtWidgets.QWidget):
         super(WaveformPlot, self).__init__()
         self.track = track
         self.setMinimumHeight(200)
+        self.setMouseTracking(True)
         self.sample_start = 0.0
         self.sample_zoom = 1.0
+        self.hover_sample = -1
+        self.selected_sample = 0
+        self.select_listener = None
 
         self.block_values = [None] * track.numsamples()
         self.waveform_values = np.zeros([1024 * 100, 2])
@@ -293,6 +297,9 @@ class WaveformPlot(QtWidgets.QWidget):
 
         for i in range(20):
             self.populate_block(i * track.numsamples() // 20)
+
+    def set_select_listener(self, listener):
+        self.select_listener = listener
 
     def populate_one_block(self):
         center = random.randint(0, self.width())
@@ -367,6 +374,24 @@ class WaveformPlot(QtWidgets.QWidget):
                     painter.drawLine(x-1, prev_r, x, y_r)
                 prev = (y_l, y_r)
 
+        if self.selected_sample != -1:
+            sx = max(self.pixel_for_sample(self.selected_sample), 0)
+            ex = min(self.pixel_for_sample(self.selected_sample + 2), self.width())
+            if ex > 0 and sx < self.width():
+                w = ex - sx
+                selected_pen = QtGui.QPen(QtGui.QColor(160, 160, 160), 5)
+                painter.setPen(selected_pen)
+                painter.drawRect(sx, 5, w, self.height() - 10)
+
+        if self.hover_sample != -1:
+            sx = max(self.pixel_for_sample(self.hover_sample), 0)
+            ex = min(self.pixel_for_sample(self.hover_sample + 2), self.width())
+            if ex > 0 and sx < self.width():
+                w = ex - sx
+                hover_pen = QtGui.QPen(QtGui.QColor(255, 192, 160), 5)
+                painter.setPen(hover_pen)
+                painter.drawRect(sx, 5, w, self.height() - 10)
+
         edge_pen = QtGui.QPen(QtGui.QColor(0, 0, 0), 1)
         painter.setPen(edge_pen)
         painter.drawRect(0, 0, self.width() - 1, self.height() - 1)
@@ -391,9 +416,37 @@ class WaveformPlot(QtWidgets.QWidget):
             max_start = self.track.numsamples() * (1 - 1/self.sample_zoom)
             self.sample_start = max(min(self.sample_start, max_start), 0)
 
+        self.update_hover(event.position().x())
         self.update()
         self.timer.start()
         self.update_waveform()
+
+    def enterEvent(self, event):
+        self.update_hover(event.localPos().x())
+
+    def leaveEvent(self, event):
+        self.hover_sample = -1
+        self.update()
+
+    def mouseMoveEvent(self, event):
+        self.update_hover(event.localPos().x())
+
+    def mousePressEvent(self, event):
+        s = int(self.sample_for_pixel(event.localPos().x()))
+        self.set_selected_sample(s)
+
+    def set_selected_sample(self, value):
+        if self.selected_sample != value:
+            self.selected_sample = value
+            if self.select_listener:
+                self.select_listener(value)
+            self.update()
+
+    def update_hover(self, x):
+        s = int(self.sample_for_pixel(x))
+        if s != self.hover_sample:
+            self.hover_sample = s
+            self.update()
 
     def update_waveform(self):
         max_block = len(self.waveform_values) // 1024
@@ -462,6 +515,7 @@ class StreamView(QtWidgets.QWidget):
         vlayout.addLayout(hlayout)
 
         self.waveform_plot = WaveformPlot(track)
+        self.waveform_plot.set_select_listener(self.on_selected_sample_changed)
         vlayout.addWidget(self.waveform_plot)
 
         tabs = QtWidgets.QTabWidget()
@@ -474,5 +528,10 @@ class StreamView(QtWidgets.QWidget):
 
         self.spinbox_changed(0)
 
+    def on_selected_sample_changed(self, value):
+        if self.spinbox.value() != value:
+            self.spinbox.setValue(value)
+
     def spinbox_changed(self, value):
+        self.waveform_plot.set_selected_sample(value)
         self.aac_analyzer.set_sample(value)
