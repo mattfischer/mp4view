@@ -188,33 +188,6 @@ class RawSamplesPlot(plot.PlotView):
                 self.add_plot(win_idx, plot.PlotLine(h_axis, v_axis_samples, 2, sample_colors, sample_points))
                 win_idx += 1
 
-class FinalSamplesPlot(plot.PlotView):
-    def __init__(self, channel):
-        super(FinalSamplesPlot, self).__init__()
-        self.channel = channel
-
-    def set_aac(self, aac, prev_aac):
-        cpe = aac.parsed_block.cpe
-        self.reset()
-
-        samples = aac.windowed_samples[self.channel]
-        if prev_aac:
-            prev_samples = prev_aac.windowed_samples[self.channel]
-        else:
-            prev_samples = [0] * 2048
-
-        h_axis = plot.AxisLinearUnsigned(1024)
-        v_axis = plot.AxisLinearSigned(32767)
-        win_idx = 0
-        colors = [LINE_COLOR]
-        points = []
-        for i in range(1024):
-            value = samples[i] + prev_samples[1024 + i]
-            points.append((0, i, value))
-
-        self.add_plot(win_idx, plot.PlotAxes((h_axis, 0, 0), (v_axis, 0, 0)))
-        self.add_plot(win_idx, plot.PlotLine(h_axis, v_axis, 2, colors, points))
-
 class PerChannelView(QtWidgets.QScrollArea):
     def __init__(self, cls, title):
         super(PerChannelView, self).__init__()
@@ -248,8 +221,7 @@ class Analyzer:
             PerChannelView(RescaledSpectrumPlot, 'Rescaled Spectrum'),
             PerChannelView(SpectrumPlot, 'Spectrum'),
             PerChannelView(TNSSpectrumPlot, 'TNS Spectrum'),
-            PerChannelView(RawSamplesPlot, 'Raw Samples'),
-            PerChannelView(FinalSamplesPlot, 'Final Samples')
+            PerChannelView(RawSamplesPlot, 'Samples'),
         ]
 
     def get_views(self):
@@ -283,6 +255,7 @@ class WaveformPlot(QtWidgets.QWidget):
         self.sample_zoom = 1.0
         self.hover_sample = -1
         self.selected_sample = 0
+        self.selected_sample_windows = [np.zeros(2048)]
         self.select_listener = None
 
         self.block_values = [None] * track.numsamples()
@@ -377,11 +350,23 @@ class WaveformPlot(QtWidgets.QWidget):
         if self.selected_sample != -1:
             sx = max(self.pixel_for_sample(self.selected_sample), 0)
             ex = min(self.pixel_for_sample(self.selected_sample + 2), self.width())
+
+            window_pen = QtGui.QPen(QtGui.QColor(128, 128, 128))
+            painter.setPen(window_pen)
+            for win in self.selected_sample_windows:
+                prev_y = None
+                for x in range(sx, ex):
+                    n = (x - sx) * 2048 // (ex - sx)
+                    y = self.height() * (1 - win[n])
+                    if prev_y:
+                        painter.drawLine(x - 1, prev_y, x, y)
+                    prev_y = y
+
             if ex > 0 and sx < self.width():
                 w = ex - sx
                 selected_pen = QtGui.QPen(QtGui.QColor(160, 160, 160), 5)
                 painter.setPen(selected_pen)
-                painter.drawRect(sx, 5, w, self.height() - 10)
+                painter.drawRect(sx, 3, w, self.height() - 6)
 
         if self.hover_sample != -1:
             sx = max(self.pixel_for_sample(self.hover_sample), 0)
@@ -390,7 +375,7 @@ class WaveformPlot(QtWidgets.QWidget):
                 w = ex - sx
                 hover_pen = QtGui.QPen(QtGui.QColor(255, 192, 160), 5)
                 painter.setPen(hover_pen)
-                painter.drawRect(sx, 5, w, self.height() - 10)
+                painter.drawRect(sx, 3, w, self.height() - 6)
 
         edge_pen = QtGui.QPen(QtGui.QColor(0, 0, 0), 1)
         painter.setPen(edge_pen)
@@ -440,6 +425,24 @@ class WaveformPlot(QtWidgets.QWidget):
             self.selected_sample = value
             if self.select_listener:
                 self.select_listener(value)
+            (bytes, location) = self.track.getsample(value)
+            aac = block.RawDataBlock()
+            aac.parse(bytes, location, self.track.es_descriptor())
+            ics = aac.parsed_block.cpe.ics[0]
+            params = ics.params
+            ics_info = ics.ics_info
+            self.selected_sample_windows = [None] * params.num_windows
+            if params.num_windows == 1:
+                self.selected_sample_windows[0] = np.zeros(2048)
+                for i in range(2048):
+                    self.selected_sample_windows[0][i] = aac.window(ics_info.window_shape, ics_info.window_sequence, i)
+            else:
+                for w in range(params.num_windows):
+                    self.selected_sample_windows[w] = np.zeros(2048)
+                    for i in range(256):
+                        start = 448 + w * 128
+                        self.selected_sample_windows[w][start + i] = aac.window(ics_info.window_shape, ics_info.window_sequence, i)
+
             self.update()
 
     def update_hover(self, x):
