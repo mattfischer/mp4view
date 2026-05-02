@@ -259,7 +259,7 @@ class WaveformPlot(QtWidgets.QWidget):
         self.select_listener = None
 
         self.block_values = [None] * track.numsamples()
-        self.waveform_values = np.zeros([1024 * 100, 2])
+        self.waveform_values = np.zeros([1024 * 50, 2])
         self.waveform_start = 0
         self.waveform_valid = False
         self.timer = QtCore.QTimer()
@@ -348,20 +348,24 @@ class WaveformPlot(QtWidgets.QWidget):
                 prev = (y_l, y_r)
 
         if self.selected_sample != -1:
-            sx = max(self.pixel_for_sample(self.selected_sample), 0)
-            ex = min(self.pixel_for_sample(self.selected_sample + 2), self.width())
+            sx = self.pixel_for_sample(self.selected_sample)
+            ex = self.pixel_for_sample(self.selected_sample + 2)
 
             window_pen = QtGui.QPen(QtGui.QColor(128, 128, 128))
             painter.setPen(window_pen)
             for win in self.selected_sample_windows:
                 prev_y = None
                 for x in range(sx, ex):
+                    if x < 0 or x >= self.width():
+                        continue
                     n = (x - sx) * 2048 // (ex - sx)
                     y = self.height() * (1 - win[n])
                     if prev_y:
                         painter.drawLine(x - 1, prev_y, x, y)
                     prev_y = y
 
+            ex = min(ex, self.width())
+            sx = max(sx, 0)
             if ex > 0 and sx < self.width():
                 w = ex - sx
                 selected_pen = QtGui.QPen(QtGui.QColor(160, 160, 160), 5)
