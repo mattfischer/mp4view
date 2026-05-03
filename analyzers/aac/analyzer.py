@@ -1,4 +1,4 @@
-from . import block, plot, waveform
+from . import parse, plot, waveform
 import syntax
 
 from PySide2 import QtWidgets
@@ -37,7 +37,7 @@ class SpectrumScalefactorPlot(plot.PlotView):
                     start = ics.params.swb_offset[sfb]
                     end = ics.params.swb_offset[sfb+1]
                     val = ics.scale_factor_data.sf[g][sfb] - 100
-                    is_intensity = ics.section_data.sfb_cb[g][sfb] in (block.INTENSITY_HCB, block.INTENSITY_HCB2)
+                    is_intensity = ics.section_data.sfb_cb[g][sfb] in (parse.INTENSITY_HCB, parse.INTENSITY_HCB2)
                     color = 1 if is_intensity else 0
                     scalefactor_bars.append((color, end - start, val))
 
@@ -225,12 +225,12 @@ class Analyzer:
 
     def set_sample(self, sample):
         (bytes, location) = self.track.getsample(sample)
-        aac = block.RawDataBlock()
+        aac = parse.RawDataBlock()
         aac.parse(bytes, location, self.track.es_descriptor())
 
         if sample > 0:
             (prev_bytes, prev_location) = self.track.getsample(sample - 1)
-            prev_aac = block.RawDataBlock()
+            prev_aac = parse.RawDataBlock()
             prev_aac.parse(prev_bytes, prev_location, self.track.es_descriptor())
         else:
             prev_aac = None

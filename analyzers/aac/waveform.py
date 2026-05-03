@@ -4,7 +4,7 @@ from PySide2.QtCore import Qt
 import numpy as np
 import random
 
-from . import block
+from . import parse
 
 LINE_COLOR = (128, 176, 224)
 
@@ -62,7 +62,7 @@ class WaveformPlot(QtWidgets.QWidget):
 
     def populate_block(self, index):
         (bytes, location) = self.track.getsample(index)
-        aac = block.RawDataBlock()
+        aac = parse.RawDataBlock()
         aac.parse(bytes, location, self.track.es_descriptor())
         l_val = np.sum(np.abs(aac.windowed_samples[0])) / 1024
         r_val = np.sum(np.abs(aac.windowed_samples[1])) / 1024
@@ -193,7 +193,7 @@ class WaveformPlot(QtWidgets.QWidget):
             if self.select_listener:
                 self.select_listener(value)
             (bytes, location) = self.track.getsample(value)
-            aac = block.RawDataBlock()
+            aac = parse.RawDataBlock()
             aac.parse(bytes, location, self.track.es_descriptor())
             ics = aac.parsed_block.cpe.ics[0]
             params = ics.params
@@ -245,7 +245,7 @@ class WaveformPlot(QtWidgets.QWidget):
 
         for i in range(*update_range):
             (bytes, location) = self.track.getsample(i + self.waveform_start)
-            aac = block.RawDataBlock()
+            aac = parse.RawDataBlock()
             aac.parse(bytes, location, self.track.es_descriptor())
             if i == update_range[0]:
                 start = i * 1024 + 1024
