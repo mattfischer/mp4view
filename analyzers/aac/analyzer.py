@@ -1,8 +1,8 @@
-from . import parse, plot, waveform
+from . import parse, plot, player, waveform
 import syntax
 import math
 
-from PySide2 import QtWidgets
+from PySide2 import QtWidgets, QtCore
 
 SCALEFACTOR_COLOR = (192, 184, 192)
 INTENSITY_COLOR = (224, 192, 64)
@@ -257,13 +257,27 @@ class StreamView(QtWidgets.QWidget):
         self.title = 'AAC Streams'
         self.track = track
         self.aac_analyzer = Analyzer(track)
+        self.player = player.Player(track)
+        self.selected_sample = 0
+
+        self.play_stop_timer = QtCore.QTimer()
+        self.play_stop_timer.setInterval(1000)
+        self.play_stop_timer.setSingleShot(True)
+        self.play_stop_timer.timeout.connect(self.on_play_stop_timeout)
 
         hlayout = QtWidgets.QHBoxLayout()
         hlayout.addWidget(QtWidgets.QLabel('Sample:'))
         self.spinbox = QtWidgets.QSpinBox()
         self.spinbox.setMaximum(self.track.numsamples())
-        self.spinbox.valueChanged.connect(self.spinbox_changed)
+        self.spinbox.valueChanged.connect(self.on_spinbox_changed)
         hlayout.addWidget(self.spinbox)
+
+        self.play_stop_button = QtWidgets.QPushButton()
+        play_icon = self.play_stop_button.style().standardIcon(QtWidgets.QStyle.SP_MediaPlay)
+        self.play_stop_button.setIcon(play_icon)
+        self.play_stop_button.clicked.connect(self.on_play_stop_button_clicked)
+        hlayout.addWidget(self.play_stop_button)
+        hlayout.addStretch(1)
 
         vlayout = QtWidgets.QVBoxLayout()
         vlayout.addLayout(hlayout)
@@ -280,12 +294,23 @@ class StreamView(QtWidgets.QWidget):
 
         self.setLayout(vlayout)
 
-        self.spinbox_changed(0)
+        self.on_spinbox_changed(0)
 
     def on_selected_sample_changed(self, value):
         if self.spinbox.value() != value:
             self.spinbox.setValue(value)
 
-    def spinbox_changed(self, value):
+    def on_spinbox_changed(self, value):
+        self.selected_sample = value
         self.waveform_plot.set_selected_sample(value)
         self.aac_analyzer.set_sample(value)
+
+    def on_play_stop_button_clicked(self):
+        self.player.play(self.selected_sample)
+        stop_icon = self.play_stop_button.style().standardIcon(QtWidgets.QStyle.SP_MediaStop)
+        self.play_stop_button.setIcon(stop_icon)
+        self.play_stop_timer.start()
+
+    def on_play_stop_timeout(self):
+        play_icon = self.play_stop_button.style().standardIcon(QtWidgets.QStyle.SP_MediaPlay)
+        self.play_stop_button.setIcon(play_icon)
