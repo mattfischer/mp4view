@@ -21,6 +21,8 @@ class WaveformPlot(QtWidgets.QWidget):
         self.selected_sample = 0
         self.selected_sample_windows = [np.zeros(2048)]
         self.select_listener = None
+        self.drag_start = None
+        self.drag_sample_start = 0
 
         self.block_values = [None] * track.numsamples()
         self.block_timer = QtCore.QTimer()
@@ -189,11 +191,29 @@ class WaveformPlot(QtWidgets.QWidget):
         self.update()
 
     def mouseMoveEvent(self, event):
+        if event.buttons() & Qt.LeftButton:
+            if self.drag_start is None:
+                self.drag_start = event.localPos()
+                self.drag_sample_start = self.sample_start
+            pixel_delta = event.localPos().x() - self.drag_start.x()
+            delta = self.track.numsamples() * pixel_delta / (self.sample_zoom * self.width())
+            max_start = self.track.numsamples() * (1 - 1/self.sample_zoom)
+            if delta < 0:
+                self.sample_start = min(self.drag_sample_start - delta, max_start)
+            else:
+                self.sample_start = max(self.drag_sample_start - delta, 0)
+            self.update()
+            self.update_waveform()
+            self.block_timer.start()
+
         self.update_hover(event.localPos().x())
 
-    def mousePressEvent(self, event):
-        s = int(self.sample_for_pixel(event.localPos().x()))
-        self.set_selected_sample(s)
+    def mouseReleaseEvent(self, event):
+        if self.drag_start is None:
+            s = int(self.sample_for_pixel(event.localPos().x()))
+            self.set_selected_sample(s)
+        else:
+            self.drag_start = None
 
     def set_selected_sample(self, value):
         if self.selected_sample != value:
