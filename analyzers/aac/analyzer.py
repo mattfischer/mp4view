@@ -39,13 +39,15 @@ class SpectrumScalefactorPlot(plot.PlotView):
                     val = ics.scale_factor_data.sf[g][sfb] - 100
                     is_intensity = ics.section_data.sfb_cb[g][sfb] in (parse.INTENSITY_HCB, parse.INTENSITY_HCB2)
                     color = 1 if is_intensity else 0
-                    scalefactor_bars.append((color, end - start, val))
+                    caption = 'sfb %i: %i %s' % (sfb, val, '(intensity)' if is_intensity else '')
+                    scalefactor_bars.append((color, end - start, val, caption))
 
                     ms_used = (cpe.ms_mask_present == 2 or (cpe.ms_mask_present == 1 and cpe.ms_used[g][sfb]))
                     color = 1 if ms_used else 0
                     for bin in range(start, end):
                         value = ics.spectral_data.spec[g][win][sfb][bin - start]
-                        spectrum_points.append((color, bin, value))
+                        caption = 'bin %i: %i %s' % (bin, value, '(M/S stereo)' if ms_used else '')
+                        spectrum_points.append((color, bin, value, caption))
 
                 self.add_plot(win_idx, plot.PlotBar(h_axis, v_axis_scalefactor, scalefactor_colors, scalefactor_bars))
                 self.add_plot(win_idx, plot.PlotLine(h_axis, v_axis_spectrum, 2, spectrum_colors, spectrum_points))
@@ -76,7 +78,8 @@ class RescaledSpectrumPlot(plot.PlotView):
                     color = 1 if ms_used else 0
                     for bin in range(start, end):
                         value = aac.x_rescal[self.channel][g][win][sfb][bin - start]
-                        points.append((color, bin, value))
+                        caption = 'bin %i: %f %s' % (bin, value, '(M/S stereo)' if ms_used else '')
+                        points.append((color, bin, value, caption))
 
                 self.add_plot(win_idx, plot.PlotAxes((h_axis, ics.params.window_length // 64, 4), (v_axis, 1, 5)))
                 self.add_plot(win_idx, plot.PlotLine(h_axis, v_axis, 2, colors, points))
@@ -101,7 +104,8 @@ class SpectrumPlot(plot.PlotView):
                 points = []
                 for i in range(ics.params.window_length):
                     value = aac.spec[self.channel][g][win][i]
-                    points.append((0, i, value))
+                    caption = 'bin %i: %f' % (i, value)
+                    points.append((0, i, value, caption))
 
                 self.add_plot(win_idx, plot.PlotAxes((h_axis, ics.params.window_length // 64, 4), (v_axis, 1, 5)))
                 self.add_plot(win_idx, plot.PlotLine(h_axis, v_axis, 2, colors, points))
@@ -136,17 +140,19 @@ class TNSSpectrumPlot(plot.PlotView):
                         sfb_start = ics.params.swb_offset[bottom]
                         sfb_end = ics.params.swb_offset[top]
                         value = 1 if tns_order > 0 else 0
-                        tns_bars.insert(0, (0, sfb_end - sfb_start, value))
+                        caption = 'TNS order %i' % tns_order
+                        tns_bars.insert(0, (0, sfb_end - sfb_start, value, caption))
 
                     if bottom > 0:
-                        tns_bars.insert(0, (0, bottom, 0))
+                        tns_bars.insert(0, (0, bottom, 0, None))
                 else:
                     spectrum = aac.spec
 
                 spectrum_points = []
                 for i in range(ics.params.window_length):
                     value = spectrum[self.channel][g][win][i]
-                    spectrum_points.append((0, i, value))
+                    caption = 'bin %i: %f' % (i, value)
+                    spectrum_points.append((0, i, value, caption))
 
                 self.add_plot(win_idx, plot.PlotBar(h_axis, v_axis_tns, tns_colors, tns_bars))
                 self.add_plot(win_idx, plot.PlotAxes((h_axis, ics.params.window_length // 64, 4), (v_axis_spectrum, 1, 5)))
@@ -175,9 +181,10 @@ class RawSamplesPlot(plot.PlotView):
                 window_points = []
                 for i in range(ics.params.window_length * 2):
                     value = aac.samples[self.channel][g][win][i]
-                    sample_points.append((0, i, value))
+                    caption = 'sample %i: %f' % (i, value)
+                    sample_points.append((0, i, value, caption))
                     value = aac.window(ics.ics_info.window_shape, ics.ics_info.window_sequence, i)
-                    window_points.append((0, i, value))
+                    window_points.append((0, i, value, None))
 
                 self.add_plot(win_idx, plot.PlotLine(h_axis, v_axis_window, 1, window_colors, window_points))
                 self.add_plot(win_idx, plot.PlotAxes((h_axis, 0, 0), (v_axis_samples, 0, 0)))
