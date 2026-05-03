@@ -189,7 +189,7 @@ class RawSamplesPlot(plot.PlotView):
                     value = aac.window(ics.ics_info.window_shape, ics.ics_info.window_sequence, i)
                     window_points.append((0, i, value, None))
 
-                self.add_plot(win_idx, plot.PlotLine(h_axis, v_axis_window, 1, window_colors, window_points))
+                self.add_plot(win_idx, plot.PlotLine(h_axis, v_axis_window, 1, window_colors, window_points, False))
                 self.add_plot(win_idx, plot.PlotAxes((h_axis, 0, 0), (v_axis_samples, 0, 0)))
                 self.add_plot(win_idx, plot.PlotLine(h_axis, v_axis_samples, 2, sample_colors, sample_points))
                 win_idx += 1

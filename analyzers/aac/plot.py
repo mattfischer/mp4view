@@ -100,14 +100,14 @@ class PlotAxes:
         pass
 
 class PlotLine:
-    def __init__(self, horizontal_axis, vertical_axis, width, colors, points, point_caption=None):
+    def __init__(self, horizontal_axis, vertical_axis, width, colors, points, allow_hover=True):
         self.horizontal_axis = horizontal_axis
         self.vertical_axis = vertical_axis
         self.width = width
         self.colors = colors
         self.points = points
-        self.point_caption = point_caption
         self.hover_point = -1
+        self.allow_hover = allow_hover
 
     def draw(self, painter, rect):
         pens = [QtGui.QPen(QtGui.QColor(r, g, b), self.width) for (r, g, b) in self.colors]
@@ -142,6 +142,9 @@ class PlotLine:
                 painter.drawText(rect.x(), rect.bottom() - 10, caption)
 
     def try_hover(self, rect, hover_x, hover_y):
+        if not self.allow_hover:
+            return False
+
         start = -1
         end = -1
         for (i, (color, point_x, point_y, caption)) in enumerate(self.points):
@@ -168,12 +171,13 @@ class PlotLine:
         self.hover_point = -1
 
 class PlotBar:
-    def __init__(self, horizontal_axis, vertical_axis, colors, bars):
+    def __init__(self, horizontal_axis, vertical_axis, colors, bars, allow_hover=True):
         self.horizontal_axis = horizontal_axis
         self.vertical_axis = vertical_axis
         self.colors = colors
         self.bars = bars
         self.hover_bar = -1
+        self.allow_hover = allow_hover
 
     def draw(self, painter, rect):
         brushes = [QtGui.QBrush(QtGui.QColor(r, g, b)) for (r, g, b) in self.colors]
@@ -203,6 +207,9 @@ class PlotBar:
                 painter.drawText(rect.x(), rect.bottom() - 10, caption)
 
     def try_hover(self, rect, hover_x, hover_y):
+        if not self.allow_hover:
+            return False
+
         p = 0
         for (i, (color, width, height, caption)) in enumerate(self.bars):
             sx = rect.left() + rect.width() * self.horizontal_axis.map(p)
