@@ -1,5 +1,6 @@
 from . import parse, plot, waveform
 import syntax
+import math
 
 from PySide2 import QtWidgets
 
@@ -39,7 +40,9 @@ class SpectrumScalefactorPlot(plot.PlotView):
                     val = ics.scale_factor_data.sf[g][sfb] - 100
                     is_intensity = ics.section_data.sfb_cb[g][sfb] in (parse.INTENSITY_HCB, parse.INTENSITY_HCB2)
                     color = 1 if is_intensity else 0
-                    caption = 'sfb %i: %i %s' % (sfb, val, '(intensity)' if is_intensity else '')
+                    gain = 2.0 ** (0.25 * (ics.scale_factor_data.sf[g][sfb] - 100))
+                    gain_db = 10 * math.log(gain, 10)
+                    caption = 'sfb %i: %i (%.1f dB) %s' % (sfb, val, gain_db, '(intensity)' if is_intensity else '')
                     scalefactor_bars.append((color, end - start, val, caption))
 
                     ms_used = (cpe.ms_mask_present == 2 or (cpe.ms_mask_present == 1 and cpe.ms_used[g][sfb]))
@@ -78,7 +81,7 @@ class RescaledSpectrumPlot(plot.PlotView):
                     color = 1 if ms_used else 0
                     for bin in range(start, end):
                         value = aac.x_rescal[self.channel][g][win][sfb][bin - start]
-                        caption = 'bin %i: %f %s' % (bin, value, '(M/S stereo)' if ms_used else '')
+                        caption = 'bin %i: %.0f %s' % (bin, value, '(M/S stereo)' if ms_used else '')
                         points.append((color, bin, value, caption))
 
                 self.add_plot(win_idx, plot.PlotAxes((h_axis, ics.params.window_length // 64, 4), (v_axis, 1, 5)))
@@ -104,7 +107,7 @@ class SpectrumPlot(plot.PlotView):
                 points = []
                 for i in range(ics.params.window_length):
                     value = aac.spec[self.channel][g][win][i]
-                    caption = 'bin %i: %f' % (i, value)
+                    caption = 'bin %i: %.0f' % (i, value)
                     points.append((0, i, value, caption))
 
                 self.add_plot(win_idx, plot.PlotAxes((h_axis, ics.params.window_length // 64, 4), (v_axis, 1, 5)))
@@ -151,7 +154,7 @@ class TNSSpectrumPlot(plot.PlotView):
                 spectrum_points = []
                 for i in range(ics.params.window_length):
                     value = spectrum[self.channel][g][win][i]
-                    caption = 'bin %i: %f' % (i, value)
+                    caption = 'bin %i: %.0f' % (i, value)
                     spectrum_points.append((0, i, value, caption))
 
                 self.add_plot(win_idx, plot.PlotBar(h_axis, v_axis_tns, tns_colors, tns_bars))
@@ -181,7 +184,7 @@ class RawSamplesPlot(plot.PlotView):
                 window_points = []
                 for i in range(ics.params.window_length * 2):
                     value = aac.samples[self.channel][g][win][i]
-                    caption = 'sample %i: %f' % (i, value)
+                    caption = 'sample %i: %i' % (i, value)
                     sample_points.append((0, i, value, caption))
                     value = aac.window(ics.ics_info.window_shape, ics.ics_info.window_sequence, i)
                     window_points.append((0, i, value, None))
