@@ -252,7 +252,7 @@ class PlotView(QtWidgets.QWidget):
         window_pen = QtGui.QPen(QtGui.QColor(128, 128, 128), 8)
         painter.setPen(window_pen)
         for i in range(1, self.num_windows):
-            x = self.width() * i / self.num_windows
+            x = self.width() * i / self.num_windows - 8
             painter.drawLine(x, 0, x, self.height())
 
         edge_pen = QtGui.QPen(QtGui.QColor(0, 0, 0), 1)
