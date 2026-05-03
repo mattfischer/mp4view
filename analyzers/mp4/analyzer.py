@@ -1,4 +1,4 @@
-from .file import File
+from . import parse
 
 import analyzers.aac
 import syntax
@@ -6,7 +6,7 @@ import syntax
 class Analyzer:
     def __init__(self, stream):
         self.stream = stream
-        self.file = File(stream)
+        self.file = parse.File(stream)
 
     def get_views(self):
         views = []
