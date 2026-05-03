@@ -7,6 +7,7 @@ import random
 from . import parse
 
 LINE_COLOR = (128, 176, 224)
+WAVEFORM_SIZE_SAMPLES = 50
 
 class WaveformPlot(QtWidgets.QWidget):
     def __init__(self, track):
@@ -22,14 +23,21 @@ class WaveformPlot(QtWidgets.QWidget):
         self.select_listener = None
 
         self.block_values = [None] * track.numsamples()
-        self.waveform_values = np.zeros([1024 * 50, 2])
+        self.block_timer = QtCore.QTimer()
+        self.block_timer.setSingleShot(True)
+        self.block_timer.setInterval(0)
+        self.block_timer.timeout.connect(self.populate_one_block)
+        self.block_timer.start()
+
+        self.waveform_values = np.zeros([1024 * WAVEFORM_SIZE_SAMPLES, 2])
         self.waveform_start = 0
         self.waveform_valid = False
-        self.timer = QtCore.QTimer()
-        self.timer.setSingleShot(True)
-        self.timer.setInterval(0)
-        self.timer.timeout.connect(self.populate_one_block)
-        self.timer.start()
+        self.waveform_update_range = None
+        self.waveform_update_next = -1
+        self.waveform_timer = QtCore.QTimer()
+        self.waveform_timer.setSingleShot(True)
+        self.waveform_timer.setInterval(0)
+        self.waveform_timer.timeout.connect(self.populate_next_waveform_segment)
 
         for i in range(20):
             self.populate_block(i * track.numsamples() // 20)
@@ -58,7 +66,7 @@ class WaveformPlot(QtWidgets.QWidget):
         if self.block_values[sample] is None:
             self.populate_block(sample)
             self.update()
-            self.timer.start()
+            self.block_timer.start()
 
     def populate_block(self, index):
         (bytes, location) = self.track.getsample(index)
@@ -170,7 +178,7 @@ class WaveformPlot(QtWidgets.QWidget):
 
         self.update_hover(event.position().x())
         self.update()
-        self.timer.start()
+        self.block_timer.start()
         self.update_waveform()
 
     def enterEvent(self, event):
@@ -225,6 +233,7 @@ class WaveformPlot(QtWidgets.QWidget):
             return
 
         update_range = (-1, max_block)
+        update_now = False
         if self.waveform_valid:
             shift = int(self.sample_start) - self.waveform_start
             if shift > 0 and shift < max_block:
@@ -233,33 +242,55 @@ class WaveformPlot(QtWidgets.QWidget):
                 self.waveform_values[0:-shift_left_samples] = self.waveform_values[shift_left_samples:]
                 self.waveform_values[-shift_left_samples:] = np.zeros([shift_left_samples, 2])
                 update_range = (max_block - shift_left - 1, max_block)
+                update_now = True
             elif shift < 0 and shift > -max_block:
                 shift_right = -shift
                 shift_right_samples = shift_right * 1024
                 self.waveform_values[shift_right_samples:] = self.waveform_values[0:-shift_right_samples]
                 self.waveform_values[0:shift_right_samples] = np.zeros([shift_right_samples, 2])
                 update_range = (-1, shift_right)
+                update_now = True
             elif shift == 0:
                 update_range = (0, 0)
+        elif self.waveform_start != int(self.sample_start):
+            self.waveform_values = np.zeros([1024 * WAVEFORM_SIZE_SAMPLES, 2])
+        
         self.waveform_start = int(self.sample_start)
 
-        for i in range(*update_range):
-            (bytes, location) = self.track.getsample(i + self.waveform_start)
-            aac = parse.RawDataBlock()
-            aac.parse(bytes, location, self.track.es_descriptor())
-            if i == update_range[0]:
-                start = i * 1024 + 1024
-                self.waveform_values[start:start+1024, 0] += aac.windowed_samples[0][1024:]
-                self.waveform_values[start:start+1024, 1] += aac.windowed_samples[1][1024:]
-            elif i == update_range[1] - 1:
-                start = i * 1024
-                self.waveform_values[start:start+1024, 0] += aac.windowed_samples[0][:1024]
-                self.waveform_values[start:start+1024, 1] += aac.windowed_samples[1][:1024]
+        if update_range != (0, 0):
+            if update_now:
+                for i in range(*update_range):
+                    self.populate_waveform_segment(i)
             else:
-                start = i * 1024
-                self.waveform_values[start:start+2048, 0] += aac.windowed_samples[0]
-                self.waveform_values[start:start+2048, 1] += aac.windowed_samples[1]
-        self.waveform_valid = True
+                self.waveform_update_range = update_range
+                self.waveform_update_next = update_range[0]    
+                self.waveform_timer.start()
+
+    def populate_next_waveform_segment(self):
+        self.populate_waveform_segment(self.waveform_update_next)
+        self.waveform_update_next += 1
+        if self.waveform_update_next == self.waveform_update_range[1]:
+            self.waveform_valid = True
+            self.update()
+        else:
+            self.waveform_timer.start()
+
+    def populate_waveform_segment(self, i):
+        (bytes, location) = self.track.getsample(i + self.waveform_start)
+        aac = parse.RawDataBlock()
+        aac.parse(bytes, location, self.track.es_descriptor())
+        if i == self.waveform_update_range[0]:
+            start = i * 1024 + 1024
+            self.waveform_values[start:start+1024, 0] += aac.windowed_samples[0][1024:]
+            self.waveform_values[start:start+1024, 1] += aac.windowed_samples[1][1024:]
+        elif i == self.waveform_update_range[1] - 1:
+            start = i * 1024
+            self.waveform_values[start:start+1024, 0] += aac.windowed_samples[0][:1024]
+            self.waveform_values[start:start+1024, 1] += aac.windowed_samples[1][:1024]
+        else:
+            start = i * 1024
+            self.waveform_values[start:start+2048, 0] += aac.windowed_samples[0]
+            self.waveform_values[start:start+2048, 1] += aac.windowed_samples[1]
 
     def pixel_for_sample(self, s):
         return int((s - self.sample_start) * self.sample_zoom * self.width() / self.track.numsamples())
