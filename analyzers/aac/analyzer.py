@@ -5,7 +5,7 @@ import math
 from PySide2 import QtWidgets, QtCore
 
 SCALEFACTOR_COLOR = (192, 184, 192)
-INTENSITY_COLOR = (224, 192, 64)
+INTENSITY_COLOR = (224, 192, 128)
 
 LINE_COLOR = (128, 176, 224)
 MS_COLOR = (160, 212, 184)
@@ -26,33 +26,43 @@ class SpectrumScalefactorPlot(plot.PlotView):
 
         h_axis = plot.AxisLinearUnsigned(ics.params.window_length)
         v_axis_scalefactor = plot.AxisLinearUnsigned(128)
+        v_axis_intensity = plot.AxisLinearSigned(10)
         v_axis_spectrum = plot.AxisLinearSigned(32) 
         win_idx = 0
-        scalefactor_colors = [SCALEFACTOR_COLOR, INTENSITY_COLOR]
-        spectrum_colors = [LINE_COLOR, MS_COLOR]
+        scalefactor_colors = [SCALEFACTOR_COLOR]
+        intensity_colors = [INTENSITY_COLOR]
+        spectrum_colors = [LINE_COLOR, MS_COLOR, INTENSITY_COLOR]
         for g in range(ics.params.num_window_groups):
             for win in range(ics.params.window_group_length[g]):
                 scalefactor_bars = []
+                intensity_bars = []
                 spectrum_points = []
                 for sfb in range(ics.ics_info.max_sfb):
                     start = ics.params.swb_offset[sfb]
                     end = ics.params.swb_offset[sfb+1]
-                    val = ics.scale_factor_data.sf[g][sfb] - 100
                     is_intensity = ics.section_data.sfb_cb[g][sfb] in (parse.INTENSITY_HCB, parse.INTENSITY_HCB2)
-                    color = 1 if is_intensity else 0
-                    gain = 2.0 ** (0.25 * (ics.scale_factor_data.sf[g][sfb] - 100))
-                    gain_db = 10 * math.log(gain, 10)
-                    caption = 'sfb %i: %i (%.1f dB) %s' % (sfb, val, gain_db, '(intensity)' if is_intensity else '')
-                    scalefactor_bars.append((color, end - start, val, caption))
+                    if is_intensity:
+                        val = ics.scale_factor_data.sf[g][sfb]
+                        caption = 'sfb %i: %i (intensity)' % (sfb, val)
+                        intensity_bars.append((0, end - start, val, caption))
+                        scalefactor_bars.append((0, end - start, 0, None))
+                    else:
+                        val = ics.scale_factor_data.sf[g][sfb] - 100
+                        gain = 2.0 ** (0.25 * (ics.scale_factor_data.sf[g][sfb] - 100))
+                        gain_db = 10 * math.log(gain, 10)
+                        caption = 'sfb %i: %i (%.1f dB)' % (sfb, val, gain_db)
+                        scalefactor_bars.append((0, end - start, val, caption))
+                        intensity_bars.append((0, end - start, 0, None))
 
                     ms_used = (cpe.ms_mask_present == 2 or (cpe.ms_mask_present == 1 and cpe.ms_used[g][sfb]))
-                    color = 1 if ms_used else 0
+                    color = 1 if ms_used else 2 if is_intensity else 0
                     for bin in range(start, end):
                         value = ics.spectral_data.spec[g][win][sfb][bin - start]
-                        caption = 'bin %i: %i %s' % (bin, value, '(M/S stereo)' if ms_used else '')
+                        caption = 'bin %i: %i %s' % (bin, value, '(M/S stereo)' if ms_used else '(intensity)' if is_intensity else '')
                         spectrum_points.append((color, bin, value, caption))
 
                 self.add_plot(win_idx, plot.PlotBar(h_axis, v_axis_scalefactor, scalefactor_colors, scalefactor_bars))
+                self.add_plot(win_idx, plot.PlotBar(h_axis, v_axis_intensity, intensity_colors, intensity_bars))
                 self.add_plot(win_idx, plot.PlotLine(h_axis, v_axis_spectrum, 2, spectrum_colors, spectrum_points))
                 win_idx += 1
 
