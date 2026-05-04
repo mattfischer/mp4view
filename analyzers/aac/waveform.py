@@ -8,7 +8,7 @@ from . import parse
 
 LINE_COLOR = (128, 176, 224)
 WAVEFORM_SIZE_SAMPLES = 50
-
+MAX_BLOCK_STRIDE = 256
 class WaveformPlot(QtWidgets.QWidget):
     def __init__(self, track):
         super(WaveformPlot, self).__init__()
@@ -29,7 +29,6 @@ class WaveformPlot(QtWidgets.QWidget):
         self.block_timer.setSingleShot(True)
         self.block_timer.setInterval(0)
         self.block_timer.timeout.connect(self.populate_one_block)
-        self.block_timer.start()
 
         self.waveform_values = np.zeros([1024 * WAVEFORM_SIZE_SAMPLES, 2])
         self.waveform_start = 0
@@ -41,34 +40,37 @@ class WaveformPlot(QtWidgets.QWidget):
         self.waveform_timer.setInterval(0)
         self.waveform_timer.timeout.connect(self.populate_next_waveform_segment)
 
-        for i in range(20):
-            self.populate_block(i * track.numsamples() // 20)
+        for i in range(0, self.width(), 512):
+            sample = int(self.sample_for_pixel(i))
+            self.populate_block(sample)
+        self.start_block_populate()
 
     def set_select_listener(self, listener):
         self.select_listener = listener
 
+    def start_block_populate(self):
+        self.block_stride = MAX_BLOCK_STRIDE
+        self.block_index = 0
+        self.block_timer.start()
+
     def populate_one_block(self):
-        center = random.randint(0, self.width())
-
-        sample = 0
-        for i in range(self.width()):
-            if center + i < self.width():
-                s = int(self.sample_for_pixel(center + i))
-                if self.block_values[s] is None:
-                    sample = s
-                    break
-            elif center - i >= 0:
-                s = int(self.sample_for_pixel(center - i))
-                if self.block_values[s] is None:
-                    sample = s
-                    break
+        while True:
+            offset = 0 if self.block_stride == MAX_BLOCK_STRIDE else self.block_stride // 2
+            p = offset + self.block_stride * self.block_index
+            if p >= self.width():
+                if self.block_stride == 2:
+                    return
+                else:
+                    self.block_stride //= 2
+                    self.block_index = 0
             else:
-                break
-
-        if self.block_values[sample] is None:
-            self.populate_block(sample)
-            self.update()
-            self.block_timer.start()
+                self.block_index += 1
+                sample = int(self.sample_for_pixel(p))
+                if self.block_values[sample] is None:
+                    self.populate_block(sample)
+                    self.update()
+                    self.block_timer.start()
+                    return
 
     def populate_block(self, index):
         (bytes, location) = self.track.getsample(index)
@@ -180,7 +182,7 @@ class WaveformPlot(QtWidgets.QWidget):
 
         self.update_hover(event.position().x())
         self.update()
-        self.block_timer.start()
+        self.start_block_populate()
         self.update_waveform()
 
     def enterEvent(self, event):
@@ -204,7 +206,7 @@ class WaveformPlot(QtWidgets.QWidget):
                 self.sample_start = max(self.drag_sample_start - delta, 0)
             self.update()
             self.update_waveform()
-            self.block_timer.start()
+            self.start_block_populate()
 
         self.update_hover(event.localPos().x())
 
