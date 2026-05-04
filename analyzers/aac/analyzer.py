@@ -79,7 +79,7 @@ class RescaledSpectrumPlot(plot.PlotView):
         h_axis = plot.AxisLinearUnsigned(ics.params.window_length)
         v_axis = plot.AxisLogarithmicSigned(7) 
         win_idx = 0
-        colors = [LINE_COLOR, MS_COLOR]
+        colors = [LINE_COLOR, MS_COLOR, INTENSITY_COLOR]
         for g in range(ics.params.num_window_groups):
             for win in range(ics.params.window_group_length[g]):
                 points = []
@@ -88,19 +88,20 @@ class RescaledSpectrumPlot(plot.PlotView):
                     end = ics.params.swb_offset[sfb+1]
 
                     ms_used = (cpe.ms_mask_present == 2 or (cpe.ms_mask_present == 1 and cpe.ms_used[g][sfb]))
-                    color = 1 if ms_used else 0
+                    is_intensity = ics.section_data.sfb_cb[g][sfb] in (parse.INTENSITY_HCB, parse.INTENSITY_HCB2)
+                    color = 1 if ms_used else 2 if is_intensity else 0
                     for bin in range(start, end):
                         value = aac.x_rescal[self.channel][g][win][sfb][bin - start]
-                        caption = 'bin %i: %.0f %s' % (bin, value, '(M/S stereo)' if ms_used else '')
+                        caption = 'bin %i: %.0f %s' % (bin, value, '(M/S stereo)' if ms_used else '(intensity)' if is_intensity else '')
                         points.append((color, bin, value, caption))
 
                 self.add_plot(win_idx, plot.PlotAxes((h_axis, ics.params.window_length // 64, 4), (v_axis, 1, 5)))
                 self.add_plot(win_idx, plot.PlotLine(h_axis, v_axis, 2, colors, points))
                 win_idx += 1
 
-class SpectrumPlot(plot.PlotView):
+class JointStereoSpectrumPlot(plot.PlotView):
     def __init__(self, channel):
-        super(SpectrumPlot, self).__init__()
+        super(JointStereoSpectrumPlot, self).__init__()
         self.channel = channel
 
     def set_aac(self, aac, prev_aac):
@@ -234,9 +235,9 @@ class Analyzer:
 
         self.aac_views = [
             PerChannelView(SpectrumScalefactorPlot, 'Raw Spectrum/Scalefactors'),
-            PerChannelView(RescaledSpectrumPlot, 'Rescaled Spectrum'),
-            PerChannelView(SpectrumPlot, 'Spectrum'),
-            PerChannelView(TNSSpectrumPlot, 'TNS Spectrum'),
+            PerChannelView(RescaledSpectrumPlot, 'Spectrum (rescaled)'),
+            PerChannelView(JointStereoSpectrumPlot, 'Spectrum (joint stereo)'),
+            PerChannelView(TNSSpectrumPlot, 'Spectrum (TNS)'),
             PerChannelView(RawSamplesPlot, 'Samples'),
         ]
 
