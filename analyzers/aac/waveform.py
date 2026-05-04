@@ -217,6 +217,9 @@ class WaveformPlot(QtWidgets.QWidget):
         else:
             self.drag_start = None
 
+    def resizeEvent(self, event):
+        self.start_block_populate()
+
     def set_selected_sample(self, value):
         if self.selected_sample != value:
             self.selected_sample = value
