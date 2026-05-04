@@ -93,6 +93,9 @@ class PlotAxes:
                 painter.setPen(pen_center)
                 draw_line(0)
 
+    def draw_hover(self, painter, rect):
+        pass
+
     def try_hover(self, rect, x, y):
         return False
 
@@ -140,6 +143,25 @@ class PlotLine:
                 pen = QtGui.QPen(QtGui.QColor(0, 0, 0), 1)
                 painter.setPen(pen)
                 painter.drawText(rect.x(), rect.bottom() - 10, caption)
+
+    def draw_hover(self, painter, rect):
+        if self.hover_point == -1:
+            return
+
+        (color, point_x, point_y, caption) = self.points[self.hover_point]
+        x = rect.left() + rect.width() * self.horizontal_axis.map(point_x)
+        y = rect.bottom() - rect.height() * self.vertical_axis.map(point_y)
+
+        brush = QtGui.QBrush(QtGui.QColor(255, 255, 255))
+        pen = QtGui.QPen(QtGui.QColor(0, 0, 0), 2)
+        painter.setBrush(brush)
+        painter.setPen(pen)
+        painter.drawEllipse(x - 5, y - 5, 10, 10)
+
+        if caption:
+            pen = QtGui.QPen(QtGui.QColor(0, 0, 0), 1)
+            painter.setPen(pen)
+            painter.drawText(rect.x(), rect.bottom() - 10, caption)
 
     def try_hover(self, rect, hover_x, hover_y):
         if not self.allow_hover:
@@ -192,19 +214,36 @@ class PlotBar:
             (y, h) = (sy, ey - sy) if ey > sy else (ey, sy - ey)
 
             painter.fillRect(x, y, w - 1, h, brushes[color])
-            if i == self.hover_bar:
+
+            p += width
+
+    def draw_hover(self, painter, rect):
+        if self.hover_bar == -1:
+            return
+
+        brushes = [QtGui.QBrush(QtGui.QColor(r, g, b)) for (r, g, b) in self.colors]
+        p = 0
+        for (i, (color, width, height, caption)) in enumerate(self.bars):
+            if self.hover_bar == i:
+                sx = rect.left() + rect.width() * self.horizontal_axis.map(p)
+                sy = rect.bottom() - rect.height() * self.vertical_axis.map(0)
+                ex = rect.left() + rect.width() * self.horizontal_axis.map(p + width)
+                ey = rect.bottom() - rect.height() * self.vertical_axis.map(height)
+
+                (x, w) = (sx, ex - sx) if ex > sx else (ex, sx - ex)
+                (y, h) = (sy, ey - sy) if ey > sy else (ey, sy - ey)
+
                 pen = QtGui.QPen(brushes[color].color().darker(), 3)
                 painter.setPen(pen)
                 painter.drawRect(x, y, w - 1, h)
 
             p += width
 
-        if self.hover_bar != -1:
-            (color, width, height, caption) = self.bars[self.hover_bar]
-            if caption:
-                pen = QtGui.QPen(QtGui.QColor(0, 0, 0), 1)
-                painter.setPen(pen)
-                painter.drawText(rect.x(), rect.bottom() - 10, caption)
+        (color, width, height, caption) = self.bars[self.hover_bar]
+        if caption:
+            pen = QtGui.QPen(QtGui.QColor(0, 0, 0), 1)
+            painter.setPen(pen)
+            painter.drawText(rect.x(), rect.bottom() - 10, caption)
 
     def try_hover(self, rect, hover_x, hover_y):
         if not self.allow_hover:
@@ -255,6 +294,11 @@ class PlotView(QtWidgets.QWidget):
             rect = QtCore.QRect(self.width() * i / self.num_windows, 0, self.width() / self.num_windows, self.height())
             for plot in window_plots:
                 plot.draw(painter, rect)
+
+        for (i, window_plots) in enumerate(self.plots):
+            rect = QtCore.QRect(self.width() * i / self.num_windows, 0, self.width() / self.num_windows, self.height())
+            for plot in window_plots:
+                plot.draw_hover(painter, rect)
 
         window_pen = QtGui.QPen(QtGui.QColor(128, 128, 128), 8)
         painter.setPen(window_pen)
