@@ -277,7 +277,7 @@ class WaveformPlot(QtWidgets.QWidget):
         if self.track.numsamples() / self.sample_zoom >= max_block:
             return
 
-        update_range = (-1, max_block)
+        update_range = (0, 0)
         update_now = False
         if self.waveform_valid:
             shift = int(self.sample_start) - self.waveform_start
@@ -295,19 +295,22 @@ class WaveformPlot(QtWidgets.QWidget):
                 self.waveform_values[0:shift_right_samples] = np.zeros([shift_right_samples, 2])
                 update_range = (-1, shift_right)
                 update_now = True
-            elif shift == 0:
-                update_range = (0, 0)
+            elif shift != 0:
+                update_range = (-1, max_block)
+                self.waveform_valid = False
+                self.waveform_values = np.zeros([1024 * WAVEFORM_SIZE_SAMPLES, 2])
         elif self.waveform_start != int(self.sample_start):
+            update_range = (-1, max_block)
             self.waveform_values = np.zeros([1024 * WAVEFORM_SIZE_SAMPLES, 2])
         
         self.waveform_start = int(self.sample_start)
 
         if update_range != (0, 0):
+            self.waveform_update_range = update_range
             if update_now:
                 for i in range(*update_range):
                     self.populate_waveform_segment(i)
             else:
-                self.waveform_update_range = update_range
                 self.waveform_update_next = update_range[0]    
                 self.waveform_timer.start()
 
