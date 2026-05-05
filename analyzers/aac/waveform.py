@@ -23,6 +23,8 @@ class WaveformPlot(QtWidgets.QWidget):
         self.select_listener = None
         self.drag_start = None
         self.drag_sample_start = 0
+        self.playback_sample = -1
+        self.playback_duration = 0
 
         self.block_values = [None] * track.numsamples()
         self.block_timer = QtCore.QTimer()
@@ -47,6 +49,12 @@ class WaveformPlot(QtWidgets.QWidget):
 
     def set_select_listener(self, listener):
         self.select_listener = listener
+
+    def set_playback_status(self, start_sample, end_sample, current_sample):
+        self.playback_start_sample = start_sample
+        self.playback_end_sample = end_sample
+        self.playback_sample = current_sample
+        self.update()
 
     def start_block_populate(self):
         self.block_stride = MAX_BLOCK_STRIDE
@@ -82,6 +90,12 @@ class WaveformPlot(QtWidgets.QWidget):
 
     def paintEvent(self, event):
         painter = QtGui.QPainter(self)
+
+        if self.playback_sample != -1:
+            sx = self.pixel_for_sample(self.playback_start_sample)
+            ex = self.pixel_for_sample(self.playback_end_sample)
+            duration_brush = QtGui.QBrush(QtGui.QColor(220, 220, 220))
+            painter.fillRect(sx, 0, ex - sx, self.height(), duration_brush)
 
         if not self.waveform_valid or self.track.numsamples() / self.sample_zoom >= len(self.waveform_values) // 1024:
             brush = QtGui.QBrush(QtGui.QColor(*LINE_COLOR))
@@ -155,6 +169,12 @@ class WaveformPlot(QtWidgets.QWidget):
                 hover_pen = QtGui.QPen(QtGui.QColor(255, 192, 160), 5)
                 painter.setPen(hover_pen)
                 painter.drawRect(sx, 3, w, self.height() - 6)
+
+        if self.playback_sample != -1:
+            p = self.pixel_for_sample(self.playback_sample)
+            playback_pen = QtGui.QPen(QtGui.QColor(0, 0, 255), 3)
+            painter.setPen(playback_pen)
+            painter.drawLine(p, 0, p, self.height())
 
         edge_pen = QtGui.QPen(QtGui.QColor(0, 0, 0), 1)
         painter.setPen(edge_pen)

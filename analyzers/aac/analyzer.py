@@ -271,10 +271,9 @@ class StreamView(QtWidgets.QWidget):
         self.player = player.Player(track)
         self.selected_sample = 0
 
-        self.play_stop_timer = QtCore.QTimer()
-        self.play_stop_timer.setInterval(1000)
-        self.play_stop_timer.setSingleShot(True)
-        self.play_stop_timer.timeout.connect(self.on_play_stop_timeout)
+        self.playback_timer = QtCore.QTimer()
+        self.playback_timer.setInterval(50)
+        self.playback_timer.timeout.connect(self.on_playback_timeout)
 
         hlayout = QtWidgets.QHBoxLayout()
         hlayout.addWidget(QtWidgets.QLabel('Sample:'))
@@ -315,13 +314,23 @@ class StreamView(QtWidgets.QWidget):
         self.selected_sample = value
         self.waveform_plot.set_selected_sample(value)
         self.aac_analyzer.set_sample(value)
+        self.player.set_start_sample(value)
 
     def on_play_stop_button_clicked(self):
-        self.player.play(self.selected_sample)
-        stop_icon = self.play_stop_button.style().standardIcon(QtWidgets.QStyle.SP_MediaStop)
-        self.play_stop_button.setIcon(stop_icon)
-        self.play_stop_timer.start()
+        if self.player.is_playing():
+            self.player.stop()
+        else:
+            self.player.play()
+            stop_icon = self.play_stop_button.style().standardIcon(QtWidgets.QStyle.SP_MediaStop)
+            self.play_stop_button.setIcon(stop_icon)
+            self.playback_timer.start()
 
-    def on_play_stop_timeout(self):
-        play_icon = self.play_stop_button.style().standardIcon(QtWidgets.QStyle.SP_MediaPlay)
-        self.play_stop_button.setIcon(play_icon)
+    def on_playback_timeout(self):
+        if self.player.is_playing():
+            (start_sample, end_sample) = self.player.playback_duration()
+            self.waveform_plot.set_playback_status(start_sample, end_sample, self.player.playback_sample())
+        else:
+            self.waveform_plot.set_playback_status(0, 0, -1)
+            play_icon = self.play_stop_button.style().standardIcon(QtWidgets.QStyle.SP_MediaPlay)
+            self.play_stop_button.setIcon(play_icon)
+            self.playback_timer.stop()
