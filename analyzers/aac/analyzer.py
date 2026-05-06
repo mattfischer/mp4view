@@ -263,9 +263,9 @@ class Analyzer:
             aac_view.set_aac(aac, prev_aac)
 
 class StreamView(QtWidgets.QWidget):
-    def __init__(self, track):
+    def __init__(self, track, title):
         super(StreamView, self).__init__()
-        self.title = 'AAC Streams'
+        self.title = title
         self.track = track
         self.aac_analyzer = Analyzer(track)
         self.player = player.Player(track)

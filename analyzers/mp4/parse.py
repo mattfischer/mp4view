@@ -354,9 +354,14 @@ class Track:
     def es_descriptor(self):
         tracks = self.file.findbox(MovieBox).findboxes(TrackBox)
         track = tracks[self.track_number]
-        sample_table = track.findbox(MediaBox).findbox(MediaInformationBox).findbox(SampleTableBox)
-        esd_box = sample_table.findbox(SampleDescriptionBox).findbox(AudioSampleEntry).findbox(ESDBox)
-        return esd_box.descriptor
+
+        descriptor = None
+        handler = track.findbox(MediaBox).findbox(HandlerBox)
+        if handler.handler_type == 'soun':
+            sample_table = track.findbox(MediaBox).findbox(MediaInformationBox).findbox(SampleTableBox)
+            esd_box = sample_table.findbox(SampleDescriptionBox).findbox(AudioSampleEntry).findbox(ESDBox)
+            descriptor = esd_box.descriptor
+        return descriptor
 
     def numsamples(self):
         tracks = self.file.findbox(MovieBox).findboxes(TrackBox)
@@ -410,3 +415,7 @@ class File:
 
     def track(self, track_number):
         return Track(self, track_number)
+
+    def numtracks(self):
+        tracks = self.findbox(MovieBox).findboxes(TrackBox)
+        return len(tracks)
