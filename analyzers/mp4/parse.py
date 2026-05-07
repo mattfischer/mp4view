@@ -1,4 +1,5 @@
 from .es import ESDescriptor
+from .avc import AVCDecoderConfigurationRecord
 
 from syntax import format_fixed16, format_fixed8
 
@@ -307,6 +308,32 @@ class ESDBox(FullBox):
         self.descriptor = ESDescriptor(bytes, descriptor_start)
         self.bytestream.append_syntax_item(self.descriptor.syntax_item)
 
+class AVCSampleEntry(SampleEntry):
+    def __init__(self, bytestream, start):
+        super().__init__(bytestream, start, 'AVCSampleEntry')
+        pre_defined = self.bytestream.getuint16()
+        reserved = self.bytestream.getuint16()
+        for i in range(3):
+            pre_defined = self.bytestream.getuint32()
+        self.width = self.bytestream.getuint16('width')
+        self.height = self.bytestream.getuint16('height')
+        self.horizresolution = self.bytestream.getuint32('horizresolution')
+        self.vertresolution = self.bytestream.getuint32('vertresolution')
+        reserved = self.bytestream.getuint32()
+        self.frame_count = self.bytestream.getuint16('frame_count')
+        self.compressorname = self.bytestream.getfixedstring(32, 'compressorname')
+        self.depth = self.bytestream.getuint16('depth')
+        pre_defined = self.bytestream.getuint16()
+        self.boxes = self.parseboxes()
+
+class AVCConfigurationBox(Box):
+    def __init__(self, bytestream, start):
+        super(AVCConfigurationBox, self).__init__(bytestream, start, 'AVCConfigurationBox')
+        configuration_record_start = self.bytestream.pos
+        bytes = self.bytestream.read(self.start + self.size - self.bytestream.pos)
+        self.avcConfig = AVCDecoderConfigurationRecord(bytes, configuration_record_start)
+        self.bytestream.append_syntax_item(self.avcConfig.syntax_item)
+
 def parsebox(bytestream):
     start = bytestream.pos
     bytestream.seek(start + 4)
@@ -336,7 +363,9 @@ def parsebox(bytestream):
         'free' : FreeSpaceBox,
         'mdat' : MediaDataBox,
         'mp4a' : AudioSampleEntry,
-        'esds' : ESDBox
+        'esds' : ESDBox,
+        'avc1' : AVCSampleEntry,
+        'avcC' : AVCConfigurationBox
     }
     cls = mapping.get(type, Box)
     bytestream.start_syntax_item(None, start)
