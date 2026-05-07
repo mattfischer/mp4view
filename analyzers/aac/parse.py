@@ -111,14 +111,27 @@ class RawDataBlock:
         block = ParseObject()
         while True:
             id = self.bitstream.getbits(3)
-            if id == ID_CPE:
+            if id == ID_SCE:
+                block.sce = self.parse_single_channel_element(es_descriptor)
+            elif id == ID_CPE:
                 block.cpe = self.parse_channel_pair_element(es_descriptor)
+            elif id == ID_LFE:
+                block.lfe = self.parse_lfe_channel_element(es_descriptor)
+            elif id == ID_FIL:
+                block.fil = self.parse_fill_element()
             elif id == ID_END:
                 break
             else:
                 break
         block.syntax_item = self.bitstream.finish_syntax_item()
         return block
+
+    def parse_single_channel_element(self, es_descriptor):
+        self.bitstream.start_syntax_item('single_channel_element')
+        sce = ParseObject()
+        sce.element_instance_tag = self.bitstream.getbits(4, 'element_instance_tag')
+        sce.ics = self.parse_individual_channel_stream(None, es_descriptor)
+        self.bitstream.finish_syntax_item()
 
     def parse_channel_pair_element(self, es_descriptor):
         self.bitstream.start_syntax_item('channel_pair_element')
@@ -146,6 +159,27 @@ class RawDataBlock:
                    self.parse_individual_channel_stream(cpe.ics_info, es_descriptor)]
         self.bitstream.finish_syntax_item()
         return cpe
+
+    def parse_lfe_channel_element(self, es_descriptor):
+        self.bitstream.start_syntax_item('lfe_channel_element')
+        lfe = ParseObject()
+        lfe.element_instance_tag = self.bitstream.getbits(4, 'element_instance_tag')
+        lfe.ics = self.parse_individual_channel_stream(None, es_descriptor)
+        self.bitstream.finish_syntax_item()
+
+    def parse_fill_element(self):
+        self.bitstream.start_syntax_item('fill_element')
+        cnt = self.bitstream.getbits(4)
+        if cnt == 15:
+            cnt += self.bitstream.getbits(8) - 1
+        while cnt > 0:
+            cnt -= self.parse_extension_payload(cnt)
+        self.bitstream.finish_syntax_item()
+
+    def parse_extension_payload(self, cnt):
+        extension_type = self.bitstream.getbits(4)
+        other_bits = self.bitstream.getbits(8 * (cnt - 1) + 4)
+        return cnt
 
     def parse_ics_info(self):
         self.bitstream.start_syntax_item('ics_info')

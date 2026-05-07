@@ -263,12 +263,12 @@ class SampleToChunkBox(FullBox):
         table_idx = 1
         (next_first_chunk, next_samples_per_chunk, _) = self.entries[table_idx]
         while first_sample + samples_per_chunk <= idx:
+            first_sample += samples_per_chunk
             chunk += 1
             if chunk == next_first_chunk:
                 (first_chunk, samples_per_chunk) = (next_first_chunk, next_samples_per_chunk)
                 table_idx += 1
                 (next_first_chunk, next_samples_per_chunk, _) = self.entries[table_idx]
-            first_sample += samples_per_chunk
 
         return (chunk, first_sample)
 
