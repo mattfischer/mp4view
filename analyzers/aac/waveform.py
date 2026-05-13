@@ -19,6 +19,8 @@ class BlockLayer:
         self.timer.setInterval(0)
         self.timer.timeout.connect(self.populate_one_block)
 
+        self.active = False
+
         for i in range(0, self.plot.width(), 512):
             sample = int(self.plot.sample_for_pixel(i))
             self.populate_block(sample)
@@ -38,6 +40,9 @@ class BlockLayer:
         self.timer.start()
 
     def populate_one_block(self):
+        if not self.active:
+            return
+
         while True:
             offset = 0 if self.stride == MAX_BLOCK_STRIDE else self.stride // 2
             p = offset + self.stride * self.index
@@ -75,6 +80,13 @@ class BlockLayer:
             h = self.plot.height() / 2 * r_val / 32767
             y = self.plot.height() * 3 / 4 - h / 2 
             painter.fillRect(x, y, 1, h, brush)
+
+    def background_pause(self):
+        self.active = False
+
+    def background_resume(self):
+        self.active = True
+        self.start_populate()
 
 class SamplesLayer:
     def __init__(self, plot):
@@ -388,6 +400,12 @@ class WaveformPlot(QtWidgets.QWidget):
 
     def resizeEvent(self, event):
         self.block_layer.start_populate()
+
+    def showEvent(self, event):
+        self.block_layer.background_resume()
+
+    def hideEvent(self, event):
+        self.block_layer.background_pause()
 
     def set_selected_sample(self, value):
         if self.selected_sample != value:
