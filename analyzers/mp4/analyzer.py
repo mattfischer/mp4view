@@ -1,6 +1,7 @@
 from . import parse
 
 import analyzers.aac
+import analyzers.avc
 import syntax
 
 class Analyzer:
@@ -21,5 +22,11 @@ class Analyzer:
                     if audio_specific.audioObjectType == 2:
                         title = 'Track %i (AAC audio)' % i
                         views.append(analyzers.aac.StreamView(track, title))
+
+            avc_configuration = track.avc_configuration()
+            if avc_configuration:
+                decoder_config = avc_configuration.avcConfig
+                title = 'Track %i (AVC video)' % i
+                views.append(analyzers.avc.StreamView(track, title))
 
         return views

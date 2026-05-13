@@ -268,7 +268,10 @@ class SampleToChunkBox(FullBox):
             if chunk == next_first_chunk:
                 (first_chunk, samples_per_chunk) = (next_first_chunk, next_samples_per_chunk)
                 table_idx += 1
-                (next_first_chunk, next_samples_per_chunk, _) = self.entries[table_idx]
+                if table_idx < len(self.entries):
+                    (next_first_chunk, next_samples_per_chunk, _) = self.entries[table_idx]
+                else:
+                    (next_first_chunk, next_samples_per_chunk) = (-1, -1)
 
         return (chunk, first_sample)
 
@@ -391,6 +394,17 @@ class Track:
             esd_box = sample_table.findbox(SampleDescriptionBox).findbox(AudioSampleEntry).findbox(ESDBox)
             descriptor = esd_box.descriptor
         return descriptor
+
+    def avc_configuration(self):
+        tracks = self.file.findbox(MovieBox).findboxes(TrackBox)
+        track = tracks[self.track_number]
+
+        configuration = None
+        handler = track.findbox(MediaBox).findbox(HandlerBox)
+        if handler.handler_type == 'vide':
+            sample_table = track.findbox(MediaBox).findbox(MediaInformationBox).findbox(SampleTableBox)
+            configuration = sample_table.findbox(SampleDescriptionBox).findbox(AVCSampleEntry).findbox(AVCConfigurationBox)
+        return configuration
 
     def numsamples(self):
         tracks = self.file.findbox(MovieBox).findboxes(TrackBox)
