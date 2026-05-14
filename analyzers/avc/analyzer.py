@@ -1,5 +1,7 @@
 from PySide2 import QtWidgets, QtCore
 
+from . import parse
+
 import syntax
 
 class Analyzer:
@@ -13,8 +15,9 @@ class Analyzer:
     def set_sample(self, sample):
         (bytes, location) = self.track.getsample(sample)
 
-        syntax_item = syntax.SyntaxItem('NAL', location, len(bytes))
-        self.syntax_view.update_syntax(self.track.bytestream, [syntax_item])
+        nalu = parse.NALU()
+        nalu.parse(bytes, location, self.track.avc_configuration())
+        self.syntax_view.update_syntax(self.track.bytestream, [nalu.syntax_item])
         self.syntax_view.set_highlight(location, len(bytes))
 
 class StreamView(QtWidgets.QWidget):
@@ -22,7 +25,7 @@ class StreamView(QtWidgets.QWidget):
         super(StreamView, self).__init__()
         self.title = title
         self.track = track
-        self.aac_analyzer = Analyzer(track)
+        self.avc_analyzer = Analyzer(track)
         self.selected_sample = 0
 
         hlayout = QtWidgets.QHBoxLayout()
@@ -36,7 +39,7 @@ class StreamView(QtWidgets.QWidget):
         vlayout.addLayout(hlayout)
 
         tabs = QtWidgets.QTabWidget()
-        for view in self.aac_analyzer.get_views():
+        for view in self.avc_analyzer.get_views():
             tabs.addTab(view, view.title)
 
         vlayout.addWidget(tabs)
@@ -51,4 +54,4 @@ class StreamView(QtWidgets.QWidget):
 
     def on_spinbox_changed(self, value):
         self.selected_sample = value
-        self.aac_analyzer.set_sample(value)
+        self.avc_analyzer.set_sample(value)

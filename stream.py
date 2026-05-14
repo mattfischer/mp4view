@@ -31,8 +31,8 @@ class Bitstream:
             children.append(item)
 
     def getbits(self, bits, name=None, format=None):
-        start = int(self.pos / 8)
-        end = int((self.pos + bits - 1) / 8)
+        start = self.pos // 8
+        end = (self.pos + bits - 1) // 8
         mod = (self.pos + bits - 1) % 8
         bytes = self.bytes[start:end+1]
 
@@ -48,7 +48,7 @@ class Bitstream:
 
         self.pos += bits
 
-        size = max(end - start, 1)
+        size = max(self.pos // 8 - start, 1)
         if name:
             if format:
                 title = '%s: %s' % (name, format(val))
