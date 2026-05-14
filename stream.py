@@ -34,7 +34,7 @@ class Bitstream:
         start = self.pos // 8
         end = (self.pos + bits - 1) // 8
         mod = (self.pos + bits - 1) % 8
-        bytes = self.bytes[start:end+1]
+        bytes = self.getbytes(start, end + 1)
 
         val = 0
         for byte in bytes:
@@ -82,6 +82,9 @@ class Bitstream:
             self.append_syntax_item(SyntaxItem('%s: \'%s\'' % (name, string), start + self.byte_start, length))
             
         return string
+
+    def getbytes(self, start, end):
+        return self.bytes[start:end]
 
 class Bytestream:
     def __init__(self, file):
