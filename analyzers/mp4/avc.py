@@ -1,4 +1,5 @@
 import stream
+import analyzers.avc.parse
 
 class AVCDecoderConfigurationRecord:
     def __init__(self, bytes, byte_start):
@@ -17,7 +18,11 @@ class AVCDecoderConfigurationRecord:
         for i in range(numOfSequenceParameterSets):
             sequenceParameterSetLength = bitstream.getbits(16)
             bitstream.start_syntax_item('%i' % i)
-            sequenceParameterSetNALUnit = bitstream.getbits(sequenceParameterSetLength * 8)
+            sps_bytes = bytes[bitstream.pos // 8: bitstream.pos // 8 + sequenceParameterSetLength + 1]
+            sps_nal = analyzers.avc.parse.NAL()
+            sps_nal.parse(sps_bytes, byte_start + bitstream.pos // 8, sequenceParameterSetLength, None)
+            bitstream.pos += sequenceParameterSetLength * 8
+            bitstream.append_syntax_item(sps_nal.syntax_item)
             bitstream.finish_syntax_item()
         bitstream.finish_syntax_item()
 
@@ -26,7 +31,11 @@ class AVCDecoderConfigurationRecord:
         for i in range(numOfPictureParameterSets):
             pictureParameterSetLength = bitstream.getbits(16)
             bitstream.start_syntax_item('%i' % i)
-            pictureParameterSetNALUnit = bitstream.getbits(pictureParameterSetLength * 8)
+            pps_bytes = bytes[bitstream.pos // 8: bitstream.pos // 8 + pictureParameterSetLength + 1]
+            pps_nal = analyzers.avc.parse.NAL()
+            pps_nal.parse(pps_bytes, byte_start + bitstream.pos // 8, pictureParameterSetLength, None)
+            bitstream.pos += pictureParameterSetLength * 8
+            bitstream.append_syntax_item(pps_nal.syntax_item)
             bitstream.finish_syntax_item()
         bitstream.finish_syntax_item()
         

@@ -34,6 +34,9 @@ class AVCBitstream(stream.Bitstream):
         self.finish_syntax_item(title)
         return val
 
+    def get_se(self, name=None, format=None):
+        return self.get_ue(name, format)
+
 class ParseObject:
     pass
 
@@ -84,8 +87,123 @@ class NAL:
             self.slice_layer = self.parse_slice_layer_without_partitioning(avc_configuration)
         elif self.nal_unit_type == 5:
             self.slice_layer = self.parse_slice_layer_without_partitioning(avc_configuration)
-        elif self.nal_unit_type == 6:
-            pass
+        elif self.nal_unit_type == 7:
+            self.seq_parameter_set = self.parse_seq_parameter_set()
+        elif self.nal_unit_type == 8:
+            self.pic_parameter_set = self.parse_pic_parameter_set()
+
+    def parse_seq_parameter_set(self):
+        self.bitstream.start_syntax_item('seq_parameter_set')
+        sps = ParseObject()
+        sps.profile_idc = self.bitstream.getbits(8, 'profile_idc')
+        sps.constraint_set0_flag = self.bitstream.getbits(1, 'constraint_set0_flag')
+        sps.constraint_set1_flag = self.bitstream.getbits(1, 'constraint_set1_flag')
+        sps.constraint_set2_flag = self.bitstream.getbits(1, 'constraint_set2_flag')
+        sps.constraint_set3_flag = self.bitstream.getbits(1, 'constraint_set3_flag')
+        sps.constraint_set4_flag = self.bitstream.getbits(1, 'constraint_set4_flag')
+        sps.constraint_set5_flag = self.bitstream.getbits(1, 'constraint_set5_flag')
+        reserved_zero_2bits = self.bitstream.getbits(2)
+        sps.level_idc = self.bitstream.getbits(8, 'level_idc')
+        sps.seq_parameter_set_id = self.bitstream.get_ue('seq_parameter_set_id')
+        if sps.profile_idc in (100, 110, 122, 244, 44, 83, 86, 118, 128, 138, 139, 134, 135):
+            sps.chroma_format_idc = self.bitstream.get_ue('chroma_format_idc')
+            if sps.chroma_format_idc == 3:
+                sps.separate_colour_plane_flag = self.bitstream.getbits(1, 'separate_colour_plane_flag')
+            sps.bit_depth_luma_minus8 = self.bitstream.get_ue('bit_depth_luma_minus8')
+            sps.bit_depth_chroma_minus8 = self.bitstream.get_ue('bit_depth_chroma_minus8')
+            sps.qpprime_y_zero_transform_bypass_flag = self.bitstream.getbits(1, 'qpprime_y_zero_transform_bypass_flag')
+            sps.seq_scaling_matrix_present_flag = self.bitstream.getbits(1, 'seq_scaling_matrix_present_flag')
+            if sps.seq_scaling_matrix_present_flag:
+                count = 8 if sps.chroma_format_idc != 3 else 12
+                sps.seq_scaling_list_present_flag = [0] * count
+                for i in range(count):
+                    sps.seq_scaling_list_present_flag[i] = self.bitstream.getbits(1, 'seq_scaling_list_present_flag')
+                
+        sps.log2_max_frame_num_minus4 = self.bitstream.get_ue('log2_max_frame_num_minus4')
+        sps.pic_order_cnt_type = self.bitstream.get_ue('pic_order_cnt_type')
+        if sps.pic_order_cnt_type == 0:
+            sps.log2_max_pic_order_cnt_lsb_minus4 = self.bitstream.get_ue('log2_max_pic_order_cnt_lsb_minus4')
+        elif sps.pic_order_cnt_type == 1:
+            sps.delta_pic_order_always_zero_flag = self.bitstream.getbits(1, 'delta_pic_order_always_zero_flag')
+            sps.offset_for_non_ref_pic = self.bitstream.get_se('offset_for_non_ref_pic')
+            sps.offset_for_top_to_bottom_field = self.bitstream.get_se('offset_for_top_to_bottom_field')
+            sps.num_ref_frames_in_pic_order_cnt_cycle = self.bitstream.get_ue('num_ref_frames_in_pic_order_cnt_cycle')
+            sps.offset_for_ref_frame = [0] * sps.num_ref_frames_in_pic_order_cnt_cycle
+            self.bitstream.start_syntax_item('offset_for_ref_frame')
+            for i in range(sps.num_ref_frames_in_pic_order_cnt_cycle):
+                sps.offset_for_ref_frame[i] = self.bitstream.get_se('%i' % i)
+            self.bitstream.finish_syntax_item()
+        sps.num_ref_frames = self.bitstream.get_ue('num_ref_frames')
+        sps.gaps_in_frame_num_value_allowed_flag = self.bitstream.getbits(1, 'gaps_in_frame_num_value_allowed_flag')
+        sps.pic_width_in_mbs_minus1 = self.bitstream.get_ue('pic_width_in_mbs_minus1')
+        sps.pic_height_in_map_units_minus1 = self.bitstream.get_ue('pic_height_in_map_units_minus1')
+        sps.frame_mbs_only_flag = self.bitstream.getbits(1, 'frame_mbs_only_flag')
+        if not sps.frame_mbs_only_flag:
+            sps.mb_adaptive_frame_field_flag = self.bitstream.getbits(1, 'mb_adaptive_frame_field_flag')
+        sps.direct_8x8_inference_flag = self.bitstream.getbits(1, 'direct_8x8_inference_flag')
+        sps.frame_cropping_flag = self.bitstream.getbits(1, 'frame_cropping_flag')
+        if sps.frame_cropping_flag:
+            sps.frame_crop_left_offset = self.bitstream.get_ue('frame_crop_left_offset')
+            sps.frame_crop_right_offset = self.bitstream.get_ue('frame_crop_right_offset')
+            sps.frame_crop_top_offset = self.bitstream.get_ue('frame_crop_top_offset')
+            sps.frame_crop_bottom_offset = self.bitstream.get_ue('frame_crop_bottom_offset')
+
+        sps.vui_parameters_present_flag = self.bitstream.getbits(1, 'vui_parameters_present_flag')
+        #if sps.vui_parameters_present_flag:
+        #    sps.vui_parameters = self.parse_vui_parameters()
+        
+        self.bitstream.finish_syntax_item()
+        return sps
+
+    def parse_pic_parameter_set(self):
+        self.bitstream.start_syntax_item('pic_parameter_set')
+        pps = ParseObject()
+        pps.pic_parameter_set_id = self.bitstream.get_ue('pic_parameter_set_id')
+        pps.seq_parameter_set_id = self.bitstream.get_ue('seq_parameter_set_id')
+        pps.entropy_coding_mode_flag = self.bitstream.getbits(1, 'entropy_coding_mode_flag')
+        pps.pic_order_present_flag = self.bitstream.getbits(1, 'pic_order_present_flag')
+        pps.num_slice_groups_minus1 = self.bitstream.get_ue('num_slice_groups_minus1')
+        
+        if pps.num_slice_groups_minus1 > 0:
+            pps.slice_group_map_type = self.bitstream.get_ue('slice_group_map_type')
+            if pps.slice_group_map_type == 0:
+                pps.run_length_minus1 = [0] * (pps.num_slice_groups_minus1 + 1)
+                self.bitstream.start_syntax_item('run_length_minus1')
+                for iGroup in range(pps.num_slice_groups_minus1 + 1):
+                    pps.run_length_minus1[iGroup] = self.bitstream.get_ue('%i' % iGroup)
+                self.bitstream.finish_syntax_item()
+            elif pps.slice_group_map_type == 2:
+                pps.top_left = [0] * pps.num_slice_groups_minus1
+                pps.bottom_right = [0] * pps.num_slice_groups_minus1
+                self.bitstream.start_syntax_item('group')
+                for iGroup in range(pps.num_slice_groups_minus1):
+                    pps.top_left[iGroup] = self.bitstream.get_ue('top_left %i' % iGroup)
+                    pps.bottom_right[iGroup] = self.bitstream.get_ue('bottom_right %i' % iGroup)
+                self.bitstream.finish_syntax_item()
+            elif pps.slice_group_map_type in (3, 4, 5):
+                pps.slice_group_change_direction_flag = self.bitstream.getbits(1, 'slice_group_change_direction_flag')
+                pps.slice_group_change_rate_minus1 = self.bitstream.get_ue('slice_group_change_rate_minus1')
+            elif pps.slice_group_map_type == 6:
+                pps.pic_size_in_map_units_minus1 = self.bitstream.get_ue('pic_size_in_map_units_minus1')
+                pps.slice_group_id = [0] * (pps.pic_size_in_map_units_minus1 + 1)
+                self.bitstream.start_syntax_item('slice_group_id')
+                for i in range(pps.pic_size_in_map_units_minus1 + 1):
+                    pps.slice_group_id[i] = self.bitstream.getbits(1, '%i' % i)
+                self.bitstream.finish_syntax_item()
+
+        pps.num_ref_idx_l0_active_minus1 = self.bitstream.get_ue('num_ref_idx_l0_active_minus1')
+        pps.num_ref_idx_l1_active_minus1 = self.bitstream.get_ue('num_ref_idx_l1_active_minus1')
+        pps.weighted_pred_flag = self.bitstream.getbits(1, 'weighted_pred_flag')
+        pps.weighted_bipred_idc = self.bitstream.getbits(2, 'weighted_bipred_idc')
+        pps.pic_init_qp_minus26 = self.bitstream.get_se('pic_init_qp_minus26')
+        pps.pic_init_qs_minus26 = self.bitstream.get_se('pic_init_qs_minus26')
+        pps.chroma_qp_index_offset = self.bitstream.get_se('chroma_qp_index_offset')
+        pps.deblocking_filter_variables_present_flag = self.bitstream.getbits(1, 'deblocking_filter_variables_present_flag')
+        pps.constrained_intra_pred_flag = self.bitstream.getbits(1, 'constrained_intra_pred_flag')    
+        pps.redundant_pic_cnt_present_flag = self.bitstream.getbits(1, 'redundant_pic_cnt_present_flag')
+
+        self.bitstream.finish_syntax_item()
+        return pps
 
     def parse_slice_layer_without_partitioning(self, avc_configuration):
         self.bitstream.start_syntax_item('slice_layer_without_partitioning')
