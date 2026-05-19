@@ -1,6 +1,8 @@
 import stream
 import syntax
 
+from . import cabac
+
 import math
 
 class AVCBitstream(stream.Bitstream):
@@ -212,8 +214,8 @@ class NAL:
     def parse_slice_layer_without_partitioning(self, avc_configuration):
         self.bitstream.start_syntax_item('slice_layer_without_partitioning')
         slice_layer = ParseObject()
-        slice_layer.slice_header = self.parse_slice_header(avc_configuration)
-        slice_layer.slice_data = self.parse_slice_data()
+        (slice_layer.slice_header, sps, pps) = self.parse_slice_header(avc_configuration)
+        slice_layer.slice_data = self.parse_slice_data(slice_layer.slice_header, sps, pps)
         self.bitstream.finish_syntax_item()
         return slice_layer
 
@@ -300,7 +302,7 @@ class NAL:
             slice_header.slice_group_change_cycle = self.bitstream.getbits(count, 'slice_group_change_cycle')
 
         self.bitstream.finish_syntax_item()
-        return slice_header
+        return (slice_header, sps, pps)
 
     def parse_ref_pic_list_modification(self, slice_type):
         self.bitstream.start_syntax_item('ref_pic_list_modification')
@@ -410,9 +412,20 @@ class NAL:
         self.bitstream.finish_syntax_item()
         return drpm
 
-    def parse_slice_data(self):
+    def parse_slice_data(self, slice_header, sps, pps):
+        if pps.entropy_coding_mode_flag == 1:
+            return self.parse_slice_data_cabac(slice_header, sps, pps)
+        else:
+            return None
+        
+
+    def parse_slice_data_cabac(self, slice_header, sps, pps):
         self.bitstream.start_syntax_item('slice_data')
         slice_data = ParseObject()
+        while self.bitstream.pos % 8 != 0:
+            cabac_alignment_one_bit = self.bitstream.getbit()
+
+        cabac_decoder = cabac.Decoder(self.bitstream, slice_header, sps, pps)
 
         self.bitstream.finish_syntax_item()
         return slice_data
